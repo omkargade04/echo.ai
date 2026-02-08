@@ -5,7 +5,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from echo.events.types import EventType
+from echo.events.types import BlockReason, EventType
 
 
 class NarrationPriority(str, Enum):
@@ -51,3 +51,4 @@ class NarrationEvent(BaseModel):
     session_id: str
     timestamp: float = Field(default_factory=time.time)
     source_event_id: str | None = None
+    block_reason: BlockReason | None = None

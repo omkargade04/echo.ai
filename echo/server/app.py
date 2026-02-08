@@ -25,7 +25,7 @@ event_bus: EventBus = EventBus()
 narration_bus: EventBus[NarrationEvent] = EventBus()
 transcript_watcher = TranscriptWatcher(event_bus=event_bus)
 summarizer = Summarizer(event_bus=event_bus, narration_bus=narration_bus)
-tts_engine = TTSEngine(narration_bus=narration_bus)
+tts_engine = TTSEngine(narration_bus=narration_bus, event_bus=event_bus)
 
 
 @asynccontextmanager

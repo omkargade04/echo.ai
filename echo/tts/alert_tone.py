@@ -12,8 +12,11 @@ SILENCE_DURATION = 0.050
 FADE_DURATION = 0.005
 
 
-def _apply_fade(samples: np.ndarray, fade_samples: int) -> np.ndarray:
+def apply_fade(
+    samples: np.ndarray, fade_duration: float, sample_rate: int,
+) -> np.ndarray:
     """Apply linear fade-in and fade-out to a tone segment."""
+    fade_samples = int(fade_duration * sample_rate)
     if fade_samples <= 0 or len(samples) < 2 * fade_samples:
         return samples
     result = samples.copy()
@@ -24,13 +27,12 @@ def _apply_fade(samples: np.ndarray, fade_samples: int) -> np.ndarray:
     return result
 
 
-def _generate_sine(freq: float, duration: float, sample_rate: int) -> np.ndarray:
+def generate_sine(freq: float, duration: float, sample_rate: int) -> np.ndarray:
     """Generate a sine wave at the given frequency with fade applied."""
     num_samples = int(duration * sample_rate)
     t = np.arange(num_samples, dtype=np.float32) / sample_rate
     tone = np.sin(2.0 * np.pi * freq * t).astype(np.float32)
-    fade_samples = int(FADE_DURATION * sample_rate)
-    return _apply_fade(tone, fade_samples)
+    return apply_fade(tone, FADE_DURATION, sample_rate)
 
 
 def generate_alert_tone(sample_rate: int = 16000) -> np.ndarray:
@@ -38,9 +40,9 @@ def generate_alert_tone(sample_rate: int = 16000) -> np.ndarray:
 
     Structure: 880 Hz for 150ms, 50ms silence, 1320 Hz for 150ms.
     """
-    tone_1 = _generate_sine(TONE_1_FREQ, TONE_DURATION, sample_rate)
+    tone_1 = generate_sine(TONE_1_FREQ, TONE_DURATION, sample_rate)
     silence = np.zeros(int(SILENCE_DURATION * sample_rate), dtype=np.float32)
-    tone_2 = _generate_sine(TONE_2_FREQ, TONE_DURATION, sample_rate)
+    tone_2 = generate_sine(TONE_2_FREQ, TONE_DURATION, sample_rate)
     return np.concatenate([tone_1, silence, tone_2])
 
 

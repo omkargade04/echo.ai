@@ -59,3 +59,14 @@ AUDIO_SAMPLE_RATE: int = int(os.environ.get("ECHO_AUDIO_SAMPLE_RATE", "16000"))
 AUDIO_BACKLOG_THRESHOLD: int = int(
     os.environ.get("ECHO_AUDIO_BACKLOG_THRESHOLD", "3")
 )
+
+
+# --- Alert configuration ---
+
+ALERT_REPEAT_INTERVAL: float = float(
+    os.environ.get("ECHO_ALERT_REPEAT_INTERVAL", "30.0")
+)  # Seconds between repeat alerts. 0 = no repeat.
+
+ALERT_MAX_REPEATS: int = int(
+    os.environ.get("ECHO_ALERT_MAX_REPEATS", "5")
+)  # Maximum number of repeat alerts before stopping.

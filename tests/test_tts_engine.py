@@ -1,12 +1,12 @@
 """Tests for echo.tts.tts_engine — Core TTS orchestrator."""
 
 import asyncio
-from unittest.mock import AsyncMock, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 
 from echo.events.event_bus import EventBus
-from echo.events.types import EventType
+from echo.events.types import BlockReason, EventType
 from echo.summarizer.types import (
     NarrationEvent,
     NarrationPriority,
@@ -28,6 +28,7 @@ def _make_narration(
     text: str = "Test narration.",
     priority: NarrationPriority = NarrationPriority.NORMAL,
     source_event_type: EventType = EventType.AGENT_MESSAGE,
+    block_reason: BlockReason | None = None,
 ) -> NarrationEvent:
     """Create a NarrationEvent for testing."""
     return NarrationEvent(
@@ -36,6 +37,7 @@ def _make_narration(
         source_event_type=source_event_type,
         summarization_method=SummarizationMethod.TEMPLATE,
         session_id=_SESSION,
+        block_reason=block_reason,
     )
 
 
@@ -458,3 +460,237 @@ class TestConsumeLoop:
         if engine._queue:
             await narration_bus.unsubscribe(engine._queue)
             engine._queue = None
+
+
+# ---------------------------------------------------------------------------
+# AlertManager integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestAlertManagerIntegration:
+    """Tests for AlertManager wiring in TTSEngine."""
+
+    async def test_constructor_with_event_bus_creates_alert_manager(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus
+    ):
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        assert eng._alert_manager is not None
+
+    async def test_constructor_without_event_bus_no_alert_manager(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus
+    ):
+        eng = TTSEngine(narration_bus)
+        assert eng._alert_manager is None
+
+    async def test_start_starts_alert_manager(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        event_bus = EventBus(maxsize=64)
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+        mock_am.set_repeat_callback.assert_called_once()
+        mock_am.start.assert_awaited_once()
+        await eng.stop()
+
+    async def test_stop_stops_alert_manager(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        event_bus = EventBus(maxsize=64)
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+        mock_am.stop.reset_mock()
+        await eng.stop()
+        mock_am.stop.assert_awaited_once()
+
+    async def test_critical_passes_block_reason_to_play_alert(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+
+        narration = _make_narration(
+            "Permission needed!",
+            NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+        )
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        mock_player.play_alert.assert_awaited_with(
+            block_reason=BlockReason.PERMISSION_PROMPT
+        )
+        await eng.stop()
+
+    async def test_critical_activates_alert_manager(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+
+        narration = _make_narration(
+            "Agent is blocked!",
+            NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.QUESTION,
+        )
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        mock_am.activate.assert_awaited_once_with(
+            session_id=_SESSION,
+            block_reason=BlockReason.QUESTION,
+            narration_text="Agent is blocked!",
+        )
+        await eng.stop()
+
+    async def test_critical_without_alert_manager_still_works(
+        self, engine, narration_bus, mock_player, mock_elevenlabs, mock_livekit
+    ):
+        """No event_bus passed — _alert_manager is None, CRITICAL still works."""
+        assert engine._alert_manager is None
+        await engine.start()
+
+        narration = _make_narration(
+            "Alert!",
+            NarrationPriority.CRITICAL,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+        )
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        mock_player.interrupt.assert_awaited()
+        mock_player.play_alert.assert_awaited_with(
+            block_reason=BlockReason.PERMISSION_PROMPT
+        )
+        mock_player.play_immediate.assert_awaited_with(_PCM_BYTES)
+        mock_livekit.publish.assert_awaited_with(_PCM_BYTES)
+        await engine.stop()
+
+    async def test_critical_no_pcm_skips_alert_activation(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        """When synthesize returns None, alert_manager.activate is NOT called."""
+        mock_elevenlabs.synthesize = AsyncMock(return_value=None)
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+
+        narration = _make_narration("Alert!", NarrationPriority.CRITICAL)
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        mock_am.activate.assert_not_awaited()
+        await eng.stop()
+
+    async def test_alert_active_true_when_alert_exists(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 1
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        assert eng.alert_active is True
+
+    async def test_alert_active_false_when_no_alerts(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        assert eng.alert_active is False
+
+    async def test_alert_active_false_when_no_alert_manager(self, engine):
+        """No event_bus — alert_active is always False."""
+        assert engine._alert_manager is None
+        assert engine.alert_active is False
+
+    async def test_repeat_callback_replays_alert_and_narration(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        """Directly call _handle_repeat_alert and verify full playback flow."""
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+
+        await eng._handle_repeat_alert(
+            BlockReason.PERMISSION_PROMPT, "Permission needed!"
+        )
+
+        mock_player.interrupt.assert_awaited_once()
+        mock_player.play_alert.assert_awaited_once_with(
+            block_reason=BlockReason.PERMISSION_PROMPT
+        )
+        mock_elevenlabs.synthesize.assert_awaited_once_with("Permission needed!")
+        mock_player.play_immediate.assert_awaited_once_with(_PCM_BYTES)
+        mock_livekit.publish.assert_awaited_once_with(_PCM_BYTES)
+
+    async def test_repeat_callback_no_pcm_skips_playback(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        """When synthesize returns None in repeat callback, playback is skipped."""
+        mock_elevenlabs.synthesize = AsyncMock(return_value=None)
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+
+        await eng._handle_repeat_alert(BlockReason.QUESTION, "Question!")
+
+        mock_player.interrupt.assert_awaited_once()
+        mock_player.play_alert.assert_awaited_once_with(
+            block_reason=BlockReason.QUESTION
+        )
+        mock_player.play_immediate.assert_not_awaited()
+        mock_livekit.publish.assert_not_awaited()

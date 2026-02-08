@@ -62,6 +62,23 @@ class TestHealthTTSFields:
         assert "livekit_connected" in body
         assert isinstance(body["livekit_connected"], bool)
 
+    async def test_health_includes_alert_active(
+        self, async_client: httpx.AsyncClient
+    ):
+        response = await async_client.get("/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert "alert_active" in body
+        assert isinstance(body["alert_active"], bool)
+
+    async def test_health_alert_active_defaults_false(
+        self, async_client: httpx.AsyncClient
+    ):
+        response = await async_client.get("/health")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["alert_active"] is False
+
     async def test_health_tts_state_disabled_no_key(
         self, async_client: httpx.AsyncClient
     ):

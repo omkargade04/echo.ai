@@ -6,17 +6,17 @@ Instructions for AI assistants working on this codebase.
 
 Echo is a real-time audio bridge between developers and AI coding agents (Claude Code for MVP). It captures events from the agent, summarizes them into concise narration text, and (in future stages) converts that to speech so developers can monitor their agent without watching the screen.
 
-**Current state:** Stages 1 (Intercept), 2 (Filter & Summarize), and 3 (TTS) are complete. Stages 4-5 (alerts, voice response) are planned but not yet implemented.
+**Current state:** Stages 1 (Intercept), 2 (Filter & Summarize), 3 (TTS), and 4 (Alert) are complete. Stage 5 (voice response) is planned but not yet implemented.
 
 ## Architecture
 
-Five-stage pipeline, three stages implemented:
+Five-stage pipeline, four stages implemented:
 
 ```
 Stage 1: Intercept     → Claude Code hooks + transcript watcher → EventBus
 Stage 2: Summarize     → EventBus → Summarizer → NarrationBus
 Stage 3: TTS           → NarrationBus → ElevenLabs + sounddevice + LiveKit (implemented)
-Stage 4: Alert         → Priority-based audio alerts (planned)
+Stage 4: Alert         → Differentiated tones per block reason + repeat alerts (implemented)
 Stage 5: Voice Response → STT → feed response back to agent (planned)
 ```
 
@@ -76,10 +76,12 @@ The server is a FastAPI app running on `localhost:7865`. Events flow through two
 ### `echo/tts/`
 - `types.py` — `TTSState` enum (active/degraded/disabled)
 - `elevenlabs_client.py` — ElevenLabs HTTP client for speech synthesis
-- `audio_player.py` — Priority-queued local audio playback via sounddevice
-- `alert_tone.py` — Programmatic two-tone alert generation (numpy)
+- `audio_player.py` — Priority-queued local audio playback via sounddevice, block-reason tone caching
+- `alert_tone.py` — Programmatic two-tone alert generation (numpy), shared sine/fade primitives
+- `alert_tones.py` — Per-block-reason alert tone generation (permission, question, idle, default)
+- `alert_manager.py` — Alert state tracking, repeat timers, EventBus subscription for resolution
 - `livekit_publisher.py` — LiveKit Cloud room audio publishing
-- `tts_engine.py` — Core orchestrator: subscribes to NarrationBus, routes by priority
+- `tts_engine.py` — Core orchestrator: subscribes to NarrationBus, routes by priority, AlertManager integration
 
 ### `echo/server/`
 - `app.py` — FastAPI app factory with async lifespan (creates buses, summarizer, transcript watcher, TTS engine)
@@ -97,23 +99,27 @@ The server is a FastAPI app running on `localhost:7865`. Events flow through two
 ```
 Claude Code hook fires
   → on_event.sh POSTs JSON to localhost:7865/event
-    → hook_handler.parse_hook_event() → EchoEvent
-      → EventBus.emit()
-        → Summarizer._consume_loop() pulls from queue
+    → hook_handler.parse_hook_event() → EchoEvent (with options for notifications)
+      → EventBus.emit() (fan-out to all subscribers)
+        → [Subscriber 1] Summarizer._consume_loop() pulls from queue
           → Routes by event type:
             tool_executed  → EventBatcher → TemplateEngine.render_batch()
             agent_message  → LLMSummarizer.summarize() (or truncation)
-            agent_blocked  → TemplateEngine.render() [CRITICAL priority]
+            agent_blocked  → TemplateEngine.render() [CRITICAL, block_reason, numbered options]
             others         → TemplateEngine.render()
-          → NarrationBus.emit(NarrationEvent)
+          → NarrationBus.emit(NarrationEvent with block_reason)
             → GET /narrations SSE stream
             → TTSEngine._consume_loop() pulls NarrationEvent
               → Route by priority:
-                CRITICAL → interrupt + alert + synthesize + play_immediate
+                CRITICAL → interrupt + select tone by block_reason + synthesize
+                         + play_immediate + AlertManager.activate()
                 NORMAL  → synthesize + enqueue
                 LOW     → check backlog, synthesize + enqueue (or skip)
               → ElevenLabsClient.synthesize() → PCM bytes
               → AudioPlayer (speakers) + LiveKitPublisher (room)
+        → [Subscriber 2] AlertManager._consume_loop()
+          → Non-blocked event for active session → clear alert, cancel repeat timer
+          → Repeat timer → re-play alert tone + narration every 30s (up to 5x)
 ```
 
 ## Configuration (Environment Variables)
@@ -132,6 +138,8 @@ Claude Code hook fires
 | `LIVEKIT_URL` | `""` (empty = disabled) | LiveKit Cloud server URL |
 | `LIVEKIT_API_KEY` | `""` | LiveKit API key |
 | `LIVEKIT_API_SECRET` | `""` | LiveKit API secret |
+| `ECHO_ALERT_REPEAT_INTERVAL` | `30.0` | Seconds between repeat alerts (0 = disabled) |
+| `ECHO_ALERT_MAX_REPEATS` | `5` | Max repeat alerts before stopping |
 
 ## File Paths
 
@@ -152,13 +160,14 @@ Dev: `pytest`, `pytest-asyncio`, `httpx`
 ## Common Tasks
 
 ```bash
-# Run all tests (442 tests)
+# Run all tests (553 tests)
 pytest
 
 # Run tests for a specific stage
 pytest tests/test_event_types.py tests/test_event_bus.py tests/test_hook_handler.py tests/test_hook_installer.py tests/test_transcript_watcher.py tests/test_server.py  # Stage 1
 pytest tests/test_narration_types.py tests/test_template_engine.py tests/test_event_batcher.py tests/test_llm_summarizer.py tests/test_summarizer.py tests/test_server_narrations.py  # Stage 2
 pytest tests/test_tts_types.py tests/test_tts_config.py tests/test_alert_tone.py tests/test_elevenlabs_client.py tests/test_audio_player.py tests/test_livekit_publisher.py tests/test_tts_engine.py tests/test_server_tts.py  # Stage 3
+pytest tests/test_alert_tones.py tests/test_alert_manager.py tests/test_hook_handler.py tests/test_narration_types.py tests/test_template_engine.py tests/test_audio_player.py tests/test_tts_engine.py tests/test_server_tts.py tests/test_tts_config.py  # Stage 4
 
 # Start server in foreground
 echo-copilot start
@@ -176,9 +185,11 @@ pip install -e ".[dev]"
 - Stage 1 plan: `.claude/plans/stage1-intercept-plan.md`
 - Stage 2 plan: `.claude/plans/stage2-summarize-plan.md`
 - Stage 3 plan: `.claude/plans/stage3-tts-plan.md`
+- Stage 4 plan: `.claude/plans/stage4-alert-plan.md`
 - Stage 1 implementation doc: `docs/stage1-intercept-implementation.md`
 - Stage 2 implementation doc: `docs/stage2-summarize-implementation.md`
 - Stage 3 implementation doc: `docs/stage3-tts-implementation.md`
+- Stage 4 implementation doc: `docs/stage4-alert-implementation.md`
 
 Always copy new plans to `.claude/plans/` directory.
 
@@ -189,4 +200,4 @@ Always copy new plans to `.claude/plans/` directory.
 3. **Graceful degradation** — Ollama down? Truncate. Queue full? Drop. Hook fails? `exit 0`.
 4. **EventBus fan-out** — each subscriber gets its own queue, independent delivery
 5. **Async everywhere** — `asyncio.Queue`, `httpx.AsyncClient`, `asyncio.Task` for timers
-6. **agent_blocked is CRITICAL** — always flush pending batches, emit immediately, never delay
+6. **agent_blocked is CRITICAL** — always flush pending batches, emit immediately, never delay. Differentiated tones per block reason (permission, question, idle). Repeat alerts until resolved or max repeats reached.

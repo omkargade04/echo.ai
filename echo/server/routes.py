@@ -18,7 +18,6 @@ GET  /narrations  Streams NarrationEvents as Server-Sent Events (SSE).
 
 import asyncio
 import logging
-
 from fastapi import APIRouter, Request
 from sse_starlette.sse import EventSourceResponse
 
@@ -110,6 +109,7 @@ async def health(request: Request) -> dict:
         "tts_available": tts_engine.tts_available,
         "audio_available": tts_engine.audio_available,
         "livekit_connected": tts_engine.livekit_connected,
+        "alert_active": tts_engine.alert_active,
     }
 
 

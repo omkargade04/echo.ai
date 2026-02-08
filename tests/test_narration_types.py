@@ -6,7 +6,7 @@ import time
 import pytest
 from pydantic import ValidationError
 
-from echo.events.types import EventType
+from echo.events.types import BlockReason, EventType
 from echo.summarizer.types import (
     NarrationEvent,
     NarrationPriority,
@@ -240,3 +240,38 @@ class TestNarrationEvent:
                 summarization_method=SummarizationMethod.TEMPLATE,
                 session_id="s1",
             )
+
+    def test_narration_event_with_block_reason(self):
+        event = NarrationEvent(
+            text="Permission needed to run bash command",
+            priority=NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id="s1",
+            block_reason=BlockReason.PERMISSION_PROMPT,
+        )
+        assert event.block_reason == BlockReason.PERMISSION_PROMPT
+
+    def test_narration_event_block_reason_default_none(self):
+        event = NarrationEvent(
+            text="Reading file config.py",
+            priority=NarrationPriority.NORMAL,
+            source_event_type=EventType.TOOL_EXECUTED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id="s1",
+        )
+        assert event.block_reason is None
+
+    def test_narration_event_serialization_with_block_reason(self):
+        event = NarrationEvent(
+            text="Agent is asking a question",
+            priority=NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id="s1",
+            timestamp=3000.0,
+            block_reason=BlockReason.QUESTION,
+        )
+        d = event.model_dump()
+        assert "block_reason" in d
+        assert d["block_reason"] == BlockReason.QUESTION

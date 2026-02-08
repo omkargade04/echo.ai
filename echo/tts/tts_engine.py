@@ -14,7 +14,9 @@ import logging
 
 from echo.config import AUDIO_BACKLOG_THRESHOLD
 from echo.events.event_bus import EventBus
+from echo.events.types import BlockReason
 from echo.summarizer.types import NarrationEvent, NarrationPriority
+from echo.tts.alert_manager import AlertManager
 from echo.tts.audio_player import AudioPlayer
 from echo.tts.elevenlabs_client import ElevenLabsClient
 from echo.tts.livekit_publisher import LiveKitPublisher
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 class TTSEngine:
     """Core TTS orchestrator — subscribes to NarrationBus, synthesizes speech, and plays audio."""
 
-    def __init__(self, narration_bus: EventBus) -> None:
+    def __init__(self, narration_bus: EventBus, *, event_bus: EventBus | None = None) -> None:
         self._narration_bus = narration_bus
         self._elevenlabs = ElevenLabsClient()
         self._player = AudioPlayer()
@@ -34,6 +36,10 @@ class TTSEngine:
         self._queue: asyncio.Queue | None = None
         self._consume_task: asyncio.Task | None = None
         self._running: bool = False
+        self._event_bus = event_bus
+        self._alert_manager: AlertManager | None = None
+        if event_bus is not None:
+            self._alert_manager = AlertManager(event_bus)
 
     async def start(self) -> None:
         """Start sub-components, subscribe to narration bus, begin consume loop."""
@@ -44,11 +50,19 @@ class TTSEngine:
         self._queue = await self._narration_bus.subscribe()
         self._running = True
         self._consume_task = asyncio.create_task(self._consume_loop())
+
+        if self._alert_manager:
+            self._alert_manager.set_repeat_callback(self._handle_repeat_alert)
+            await self._alert_manager.start()
+
         logger.info("TTS engine started (state=%s)", self.state.value)
 
     async def stop(self) -> None:
         """Cancel consume loop, unsubscribe, stop sub-components in reverse order."""
         self._running = False
+
+        if self._alert_manager:
+            await self._alert_manager.stop()
 
         if self._consume_task is not None:
             self._consume_task.cancel()
@@ -97,6 +111,13 @@ class TTSEngine:
         """Whether the LiveKit publisher is connected."""
         return self._livekit.is_connected
 
+    @property
+    def alert_active(self) -> bool:
+        """Return True if any session has an active alert."""
+        if self._alert_manager:
+            return self._alert_manager.active_alert_count > 0
+        return False
+
     # ------------------------------------------------------------------
     # Consume loop
     # ------------------------------------------------------------------
@@ -128,17 +149,25 @@ class TTSEngine:
     # ------------------------------------------------------------------
 
     async def _handle_critical(self, narration: NarrationEvent) -> None:
-        """CRITICAL: interrupt current playback, alert, synthesize, play immediately."""
+        """CRITICAL: interrupt current playback, play reason-specific alert, synthesize, play immediately."""
         await self._player.interrupt()
-        await self._player.play_alert()
+        await self._player.play_alert(block_reason=narration.block_reason)
 
         pcm = await self._elevenlabs.synthesize(narration.text)
         if pcm is None:
-            logger.debug("Skipping narration — TTS unavailable")
+            logger.debug("Skipping critical narration — TTS unavailable")
             return
 
         await self._player.play_immediate(pcm)
         await self._livekit.publish(pcm)
+
+        if self._alert_manager:
+            await self._alert_manager.activate(
+                session_id=narration.session_id,
+                block_reason=narration.block_reason,
+                narration_text=narration.text,
+            )
+
         logger.info("CRITICAL narration: %s", narration.text[:80])
 
     async def _handle_normal(self, narration: NarrationEvent) -> None:
@@ -164,4 +193,18 @@ class TTSEngine:
             return
 
         await self._player.enqueue(pcm, priority=2)
+        await self._livekit.publish(pcm)
+
+    async def _handle_repeat_alert(
+        self, block_reason: BlockReason | None, text: str
+    ) -> None:
+        """Callback for AlertManager repeat alerts."""
+        await self._player.interrupt()
+        await self._player.play_alert(block_reason=block_reason)
+
+        pcm = await self._elevenlabs.synthesize(text)
+        if pcm is None:
+            return
+
+        await self._player.play_immediate(pcm)
         await self._livekit.publish(pcm)

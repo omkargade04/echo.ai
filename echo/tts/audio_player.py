@@ -7,7 +7,8 @@ import numpy as np
 import sounddevice as sd
 
 from echo.config import AUDIO_BACKLOG_THRESHOLD, AUDIO_SAMPLE_RATE
-from echo.tts.alert_tone import generate_alert_tone
+from echo.events.types import BlockReason
+from echo.tts.alert_tones import generate_alert_for_reason
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class AudioPlayer:
         self._interrupt_event: asyncio.Event = asyncio.Event()
         self._playing: bool = False
         self._audio_available: bool = False
-        self._alert_tone: np.ndarray | None = None
+        self._alert_tones: dict[BlockReason | None, bytes] = {}
         self._stopped: bool = False
 
     # ------------------------------------------------------------------
@@ -53,7 +54,11 @@ class AudioPlayer:
             logger.warning("No audio output device — playback disabled")
             return
 
-        self._alert_tone = generate_alert_tone(AUDIO_SAMPLE_RATE)
+        for reason in [None, BlockReason.PERMISSION_PROMPT, BlockReason.QUESTION, BlockReason.IDLE_PROMPT]:
+            tone_array = generate_alert_for_reason(reason, AUDIO_SAMPLE_RATE)
+            pcm16 = np.clip(tone_array * 32767, -32768, 32767).astype(np.int16)
+            self._alert_tones[reason] = pcm16.tobytes()
+
         self._worker_task = asyncio.create_task(self._playback_worker())
 
     async def stop(self) -> None:
@@ -140,16 +145,12 @@ class AudioPlayer:
     # Direct playback helpers
     # ------------------------------------------------------------------
 
-    async def play_alert(self) -> None:
-        """Play the cached two-tone alert immediately (blocks until done)."""
-        if not self._audio_available or self._alert_tone is None:
+    async def play_alert(self, block_reason: BlockReason | None = None) -> None:
+        """Play the alert tone for the given block reason."""
+        if not self._audio_available or not self._alert_tones:
             return
-        alert_pcm = (
-            np.clip(self._alert_tone * 32767, -32768, 32767)
-            .astype(np.int16)
-            .tobytes()
-        )
-        await asyncio.to_thread(self._play_sync, alert_pcm)
+        tone_bytes = self._alert_tones.get(block_reason, self._alert_tones[None])
+        await asyncio.to_thread(self._play_sync, tone_bytes)
 
     async def play_immediate(self, pcm_bytes: bytes) -> None:
         """Play raw PCM bytes immediately, bypassing the queue."""
