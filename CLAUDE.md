@@ -6,16 +6,16 @@ Instructions for AI assistants working on this codebase.
 
 Echo is a real-time audio bridge between developers and AI coding agents (Claude Code for MVP). It captures events from the agent, summarizes them into concise narration text, and (in future stages) converts that to speech so developers can monitor their agent without watching the screen.
 
-**Current state:** Stages 1 (Intercept) and 2 (Filter & Summarize) are complete. Stages 3-5 (TTS, alerts, voice response) are planned but not yet implemented.
+**Current state:** Stages 1 (Intercept), 2 (Filter & Summarize), and 3 (TTS) are complete. Stages 4-5 (alerts, voice response) are planned but not yet implemented.
 
 ## Architecture
 
-Five-stage pipeline, two stages implemented:
+Five-stage pipeline, three stages implemented:
 
 ```
 Stage 1: Intercept     → Claude Code hooks + transcript watcher → EventBus
 Stage 2: Summarize     → EventBus → Summarizer → NarrationBus
-Stage 3: TTS           → NarrationBus → ElevenLabs/LiveKit (planned)
+Stage 3: TTS           → NarrationBus → ElevenLabs + sounddevice + LiveKit (implemented)
 Stage 4: Alert         → Priority-based audio alerts (planned)
 Stage 5: Voice Response → STT → feed response back to agent (planned)
 ```
@@ -73,16 +73,24 @@ The server is a FastAPI app running on `localhost:7865`. Events flow through two
 - `event_batcher.py` — 500ms time-windowed batching for rapid `tool_executed` events
 - `llm_summarizer.py` — Ollama HTTP client for `agent_message` summarization, truncation fallback
 
+### `echo/tts/`
+- `types.py` — `TTSState` enum (active/degraded/disabled)
+- `elevenlabs_client.py` — ElevenLabs HTTP client for speech synthesis
+- `audio_player.py` — Priority-queued local audio playback via sounddevice
+- `alert_tone.py` — Programmatic two-tone alert generation (numpy)
+- `livekit_publisher.py` — LiveKit Cloud room audio publishing
+- `tts_engine.py` — Core orchestrator: subscribes to NarrationBus, routes by priority
+
 ### `echo/server/`
-- `app.py` — FastAPI app factory with async lifespan (creates buses, summarizer, transcript watcher)
-- `routes.py` — `POST /event`, `GET /health`, `GET /events` (SSE), `GET /narrations` (SSE)
+- `app.py` — FastAPI app factory with async lifespan (creates buses, summarizer, transcript watcher, TTS engine)
+- `routes.py` — `POST /event`, `GET /health` (includes TTS fields), `GET /events` (SSE), `GET /narrations` (SSE)
 
 ### `echo/hooks/`
 - `on_event.sh` — Shell script that Claude Code executes; reads JSON from stdin, POSTs to server
 
 ### Root
-- `cli.py` — Click CLI: `start`, `stop`, `status`, `install-hooks`, `uninstall`
-- `config.py` — Paths, ports, Ollama configuration (all env-var overridable)
+- `cli.py` — Click CLI: `start` (with `--no-tts` flag), `stop`, `status`, `install-hooks`, `uninstall`
+- `config.py` — Paths, ports, Ollama, ElevenLabs, LiveKit, audio configuration (all env-var overridable)
 
 ## Event Flow
 
@@ -99,7 +107,13 @@ Claude Code hook fires
             others         → TemplateEngine.render()
           → NarrationBus.emit(NarrationEvent)
             → GET /narrations SSE stream
-            → (Future) Stage 3 TTS consumer
+            → TTSEngine._consume_loop() pulls NarrationEvent
+              → Route by priority:
+                CRITICAL → interrupt + alert + synthesize + play_immediate
+                NORMAL  → synthesize + enqueue
+                LOW     → check backlog, synthesize + enqueue (or skip)
+              → ElevenLabsClient.synthesize() → PCM bytes
+              → AudioPlayer (speakers) + LiveKitPublisher (room)
 ```
 
 ## Configuration (Environment Variables)
@@ -110,6 +124,14 @@ Claude Code hook fires
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
 | `ECHO_LLM_MODEL` | `qwen2.5:0.5b` | Ollama model |
 | `ECHO_LLM_TIMEOUT` | `5.0` | Ollama request timeout (sec) |
+| `ECHO_ELEVENLABS_API_KEY` | `""` (empty = TTS disabled) | ElevenLabs API key |
+| `ECHO_ELEVENLABS_BASE_URL` | `https://api.elevenlabs.io` | ElevenLabs API base URL |
+| `ECHO_TTS_VOICE_ID` | `21m00Tcm4TlvDq8ikWAM` | ElevenLabs voice ID (Rachel) |
+| `ECHO_TTS_MODEL` | `eleven_turbo_v2_5` | ElevenLabs model |
+| `ECHO_TTS_TIMEOUT` | `10.0` | ElevenLabs request timeout (sec) |
+| `LIVEKIT_URL` | `""` (empty = disabled) | LiveKit Cloud server URL |
+| `LIVEKIT_API_KEY` | `""` | LiveKit API key |
+| `LIVEKIT_API_SECRET` | `""` | LiveKit API secret |
 
 ## File Paths
 
@@ -123,24 +145,26 @@ Claude Code hook fires
 
 ## Dependencies
 
-Production: `fastapi`, `uvicorn[standard]`, `pydantic>=2.0`, `watchdog`, `click`, `sse-starlette`, `httpx`
+Production: `fastapi`, `uvicorn[standard]`, `pydantic>=2.0`, `watchdog`, `click`, `sse-starlette`, `httpx`, `sounddevice>=0.4.6`, `numpy>=1.24`, `livekit>=0.11`
 
 Dev: `pytest`, `pytest-asyncio`, `httpx`
-
-No additional dependencies needed — `httpx` handles all Ollama HTTP communication.
 
 ## Common Tasks
 
 ```bash
-# Run all tests (271 tests, ~3s)
+# Run all tests (442 tests)
 pytest
 
 # Run tests for a specific stage
 pytest tests/test_event_types.py tests/test_event_bus.py tests/test_hook_handler.py tests/test_hook_installer.py tests/test_transcript_watcher.py tests/test_server.py  # Stage 1
 pytest tests/test_narration_types.py tests/test_template_engine.py tests/test_event_batcher.py tests/test_llm_summarizer.py tests/test_summarizer.py tests/test_server_narrations.py  # Stage 2
+pytest tests/test_tts_types.py tests/test_tts_config.py tests/test_alert_tone.py tests/test_elevenlabs_client.py tests/test_audio_player.py tests/test_livekit_publisher.py tests/test_tts_engine.py tests/test_server_tts.py  # Stage 3
 
 # Start server in foreground
 echo-copilot start
+
+# Start without TTS audio output
+echo-copilot start --no-tts
 
 # Install the package in dev mode
 pip install -e ".[dev]"
@@ -151,8 +175,10 @@ pip install -e ".[dev]"
 - PRD: `.claude/plans/echo-copilot-prd.md`
 - Stage 1 plan: `.claude/plans/stage1-intercept-plan.md`
 - Stage 2 plan: `.claude/plans/stage2-summarize-plan.md`
+- Stage 3 plan: `.claude/plans/stage3-tts-plan.md`
 - Stage 1 implementation doc: `docs/stage1-intercept-implementation.md`
 - Stage 2 implementation doc: `docs/stage2-summarize-implementation.md`
+- Stage 3 implementation doc: `docs/stage3-tts-implementation.md`
 
 Always copy new plans to `.claude/plans/` directory.
 

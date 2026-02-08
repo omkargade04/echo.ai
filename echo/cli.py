@@ -175,10 +175,15 @@ def cli() -> None:
 @click.option(
     "--skip-hooks", is_flag=True, help="Don't install Claude Code hooks on start"
 )
-def start(port: int | None, daemon: bool, skip_hooks: bool) -> None:
+@click.option("--no-tts", is_flag=True, help="Disable TTS audio output")
+def start(port: int | None, daemon: bool, skip_hooks: bool, no_tts: bool) -> None:
     """Start the Echo server."""
     port = _resolve_port(port)
     _validate_port(port)
+
+    if no_tts:
+        os.environ["ECHO_ELEVENLABS_API_KEY"] = ""
+        click.echo("TTS disabled via --no-tts flag")
 
     # Check if a server is already running.
     existing_pid = _read_pid()

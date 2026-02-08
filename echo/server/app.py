@@ -1,8 +1,8 @@
 """FastAPI application factory for Echo.
 
 Creates the FastAPI app with lifespan management for the EventBus,
-TranscriptWatcher, and Summarizer.  The ``create_app()`` function is
-the single entry point used by the CLI and ``uvicorn`` alike.
+TranscriptWatcher, Summarizer, and TTSEngine.  The ``create_app()``
+function is the single entry point used by the CLI and ``uvicorn`` alike.
 """
 
 import logging
@@ -16,6 +16,7 @@ from echo.interceptors.transcript_watcher import TranscriptWatcher
 from echo.server.routes import router
 from echo.summarizer.summarizer import Summarizer
 from echo.summarizer.types import NarrationEvent
+from echo.tts.tts_engine import TTSEngine
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ event_bus: EventBus = EventBus()
 narration_bus: EventBus[NarrationEvent] = EventBus()
 transcript_watcher = TranscriptWatcher(event_bus=event_bus)
 summarizer = Summarizer(event_bus=event_bus, narration_bus=narration_bus)
+tts_engine = TTSEngine(narration_bus=narration_bus)
 
 
 @asynccontextmanager
@@ -40,10 +42,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Transcript watcher started")
     await summarizer.start()
     logger.info("Summarizer started")
+    await tts_engine.start()
+    logger.info("TTS engine started (state=%s)", tts_engine.state.value)
     try:
         yield
     finally:
         logger.info("Echo server shutting down")
+        await tts_engine.stop()
+        logger.info("TTS engine stopped")
         await summarizer.stop()
         logger.info("Summarizer stopped")
         await transcript_watcher.stop()
@@ -57,6 +63,7 @@ def create_app() -> FastAPI:
     * ``app.state.event_bus`` — the shared :class:`EventBus` instance
     * ``app.state.narration_bus`` — the shared NarrationEvent bus
     * ``app.state.summarizer`` — the :class:`Summarizer` instance
+    * ``app.state.tts_engine`` — the :class:`TTSEngine` instance
     * The ``/event``, ``/health``, ``/events``, and ``/narrations`` routes
     * Lifespan hooks for starting/stopping background services
     """
@@ -71,6 +78,7 @@ def create_app() -> FastAPI:
     app.state.event_bus = event_bus
     app.state.narration_bus = narration_bus
     app.state.summarizer = summarizer
+    app.state.tts_engine = tts_engine
 
     app.include_router(router)
 

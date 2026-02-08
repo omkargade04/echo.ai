@@ -41,6 +41,11 @@ def _get_narration_bus(request: Request) -> EventBus:
     return request.app.state.narration_bus
 
 
+def _get_tts_engine(request: Request):
+    """Retrieve the shared TTSEngine from application state."""
+    return request.app.state.tts_engine
+
+
 # ---------------------------------------------------------------------------
 # POST /event
 # ---------------------------------------------------------------------------
@@ -94,12 +99,17 @@ async def health(request: Request) -> dict:
     event_bus = _get_event_bus(request)
     narration_bus = _get_narration_bus(request)
     summarizer = request.app.state.summarizer
+    tts_engine = _get_tts_engine(request)
     return {
         "status": "ok",
         "version": __version__,
         "subscribers": event_bus.subscriber_count,
         "narration_subscribers": narration_bus.subscriber_count,
         "ollama_available": summarizer.llm_available,
+        "tts_state": tts_engine.state.value,
+        "tts_available": tts_engine.tts_available,
+        "audio_available": tts_engine.audio_available,
+        "livekit_connected": tts_engine.livekit_connected,
     }
 
 

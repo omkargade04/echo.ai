@@ -9,6 +9,7 @@ from echo.events.event_bus import EventBus
 from echo.events.types import EventType, EchoEvent
 from echo.summarizer.summarizer import Summarizer
 from echo.summarizer.types import NarrationEvent
+from echo.tts.tts_engine import TTSEngine
 
 
 @pytest.fixture
@@ -59,8 +60,55 @@ def summarizer(event_bus: EventBus, narration_bus: EventBus) -> Summarizer:
 
 
 @pytest.fixture
-def app(event_bus: EventBus, narration_bus: EventBus, summarizer: Summarizer):
-    """Return a FastAPI test app with fresh EventBus, NarrationBus, and Summarizer."""
+def tts_engine(narration_bus: EventBus) -> TTSEngine:
+    """Return a TTSEngine with all sub-components mocked to avoid real I/O.
+
+    ElevenLabsClient, AudioPlayer, and LiveKitPublisher are patched so no
+    HTTP calls, audio device access, or LiveKit SDK calls occur.
+    """
+    with patch(
+        "echo.tts.tts_engine.ElevenLabsClient.start",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.tts.tts_engine.ElevenLabsClient.stop",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.tts.tts_engine.ElevenLabsClient.is_available",
+        new_callable=PropertyMock,
+        return_value=False,
+    ), patch(
+        "echo.tts.tts_engine.AudioPlayer.start",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.tts.tts_engine.AudioPlayer.stop",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.tts.tts_engine.AudioPlayer.is_available",
+        new_callable=PropertyMock,
+        return_value=False,
+    ), patch(
+        "echo.tts.tts_engine.LiveKitPublisher.start",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.tts.tts_engine.LiveKitPublisher.stop",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.tts.tts_engine.LiveKitPublisher.is_connected",
+        new_callable=PropertyMock,
+        return_value=False,
+    ):
+        engine = TTSEngine(narration_bus=narration_bus)
+        yield engine
+
+
+@pytest.fixture
+def app(
+    event_bus: EventBus,
+    narration_bus: EventBus,
+    summarizer: Summarizer,
+    tts_engine: TTSEngine,
+):
+    """Return a FastAPI test app with fresh EventBus, NarrationBus, Summarizer, and TTSEngine."""
     from fastapi import FastAPI
     from echo.server.routes import router
 
@@ -68,6 +116,7 @@ def app(event_bus: EventBus, narration_bus: EventBus, summarizer: Summarizer):
     test_app.state.event_bus = event_bus
     test_app.state.narration_bus = narration_bus
     test_app.state.summarizer = summarizer
+    test_app.state.tts_engine = tts_engine
     test_app.include_router(router)
     return test_app
 

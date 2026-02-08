@@ -30,3 +30,32 @@ OLLAMA_BASE_URL: str = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434
 OLLAMA_MODEL: str = os.environ.get("ECHO_LLM_MODEL", "qwen2.5:0.5b")
 OLLAMA_TIMEOUT: float = float(os.environ.get("ECHO_LLM_TIMEOUT", "5.0"))
 OLLAMA_HEALTH_CHECK_INTERVAL: float = 60.0  # Re-check Ollama availability every 60s
+
+
+# --- ElevenLabs TTS configuration ---
+
+ELEVENLABS_API_KEY: str = os.environ.get("ECHO_ELEVENLABS_API_KEY", "")
+ELEVENLABS_BASE_URL: str = os.environ.get(
+    "ECHO_ELEVENLABS_BASE_URL", "https://api.elevenlabs.io"
+)
+TTS_VOICE_ID: str = os.environ.get("ECHO_TTS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+TTS_MODEL: str = os.environ.get("ECHO_TTS_MODEL", "eleven_turbo_v2_5")
+TTS_TIMEOUT: float = float(os.environ.get("ECHO_TTS_TIMEOUT", "10.0"))
+TTS_HEALTH_CHECK_INTERVAL: float = float(
+    os.environ.get("ECHO_TTS_HEALTH_CHECK_INTERVAL", "60.0")
+)
+
+
+# --- LiveKit configuration ---
+
+LIVEKIT_URL: str = os.environ.get("LIVEKIT_URL", "")
+LIVEKIT_API_KEY: str = os.environ.get("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET: str = os.environ.get("LIVEKIT_API_SECRET", "")
+
+
+# --- Audio pipeline configuration ---
+
+AUDIO_SAMPLE_RATE: int = int(os.environ.get("ECHO_AUDIO_SAMPLE_RATE", "16000"))
+AUDIO_BACKLOG_THRESHOLD: int = int(
+    os.environ.get("ECHO_AUDIO_BACKLOG_THRESHOLD", "3")
+)
