@@ -9,6 +9,7 @@ from echo.events.event_bus import EventBus
 from echo.events.types import EventType, EchoEvent
 from echo.summarizer.summarizer import Summarizer
 from echo.summarizer.types import NarrationEvent
+from echo.stt.stt_engine import STTEngine
 from echo.tts.tts_engine import TTSEngine
 
 
@@ -21,6 +22,12 @@ def event_bus() -> EventBus:
 @pytest.fixture
 def narration_bus() -> EventBus:
     """Return a fresh EventBus instance for NarrationEvents."""
+    return EventBus(maxsize=16)
+
+
+@pytest.fixture
+def response_bus() -> EventBus:
+    """Return a fresh EventBus instance for ResponseEvents."""
     return EventBus(maxsize=16)
 
 
@@ -109,21 +116,77 @@ def tts_engine(event_bus: EventBus, narration_bus: EventBus) -> TTSEngine:
 
 
 @pytest.fixture
+def stt_engine(
+    event_bus: EventBus, narration_bus: EventBus, response_bus: EventBus
+) -> STTEngine:
+    """Return an STTEngine with all sub-components mocked to avoid real I/O.
+
+    MicrophoneCapture, STTClient, and ResponseDispatcher are all patched
+    so no real microphone access, HTTP calls, or subprocess calls occur.
+    """
+    with patch(
+        "echo.stt.stt_engine.MicrophoneCapture.start",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.stt.stt_engine.MicrophoneCapture.stop",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.stt.stt_engine.MicrophoneCapture.is_available",
+        new_callable=PropertyMock,
+        return_value=False,
+    ), patch(
+        "echo.stt.stt_engine.MicrophoneCapture.is_listening",
+        new_callable=PropertyMock,
+        return_value=False,
+    ), patch(
+        "echo.stt.stt_engine.STTClient.start",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.stt.stt_engine.STTClient.stop",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.stt.stt_engine.STTClient.is_available",
+        new_callable=PropertyMock,
+        return_value=False,
+    ), patch(
+        "echo.stt.stt_engine.ResponseDispatcher.start",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.stt.stt_engine.ResponseDispatcher.stop",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.stt.stt_engine.ResponseDispatcher.is_available",
+        new_callable=PropertyMock,
+        return_value=False,
+    ):
+        engine = STTEngine(
+            event_bus=event_bus,
+            narration_bus=narration_bus,
+            response_bus=response_bus,
+        )
+        yield engine
+
+
+@pytest.fixture
 def app(
     event_bus: EventBus,
     narration_bus: EventBus,
+    response_bus: EventBus,
     summarizer: Summarizer,
     tts_engine: TTSEngine,
+    stt_engine: STTEngine,
 ):
-    """Return a FastAPI test app with fresh EventBus, NarrationBus, Summarizer, and TTSEngine."""
+    """Return a FastAPI test app with all buses, Summarizer, TTSEngine, and STTEngine."""
     from fastapi import FastAPI
     from echo.server.routes import router
 
     test_app = FastAPI()
     test_app.state.event_bus = event_bus
     test_app.state.narration_bus = narration_bus
+    test_app.state.response_bus = response_bus
     test_app.state.summarizer = summarizer
     test_app.state.tts_engine = tts_engine
+    test_app.state.stt_engine = stt_engine
     test_app.include_router(router)
     return test_app
 

@@ -568,6 +568,7 @@ class TestAlertManagerIntegration:
             session_id=_SESSION,
             block_reason=BlockReason.QUESTION,
             narration_text="Agent is blocked!",
+            options=None,
         )
         await eng.stop()
 
@@ -694,3 +695,69 @@ class TestAlertManagerIntegration:
         )
         mock_player.play_immediate.assert_not_awaited()
         mock_livekit.publish.assert_not_awaited()
+
+    async def test_critical_passes_options_to_alert_manager(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+
+        narration = NarrationEvent(
+            text="Pick an option!",
+            priority=NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id=_SESSION,
+            block_reason=BlockReason.QUESTION,
+            options=["RS256", "HS256"],
+        )
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        mock_am.activate.assert_awaited_once_with(
+            session_id=_SESSION,
+            block_reason=BlockReason.QUESTION,
+            narration_text="Pick an option!",
+            options=["RS256", "HS256"],
+        )
+        await eng.stop()
+
+    async def test_critical_passes_empty_options_to_alert_manager(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+
+        narration = NarrationEvent(
+            text="Blocked!",
+            priority=NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id=_SESSION,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+            options=[],
+        )
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        mock_am.activate.assert_awaited_once_with(
+            session_id=_SESSION,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+            narration_text="Blocked!",
+            options=[],
+        )
+        await eng.stop()

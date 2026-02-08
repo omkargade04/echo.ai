@@ -26,10 +26,12 @@ class ActiveAlert:
         session_id: str,
         block_reason: BlockReason | None,
         narration_text: str,
+        options: list[str] | None = None,
     ):
         self.session_id = session_id
         self.block_reason = block_reason
         self.narration_text = narration_text
+        self.options = options
         self.created_at: float = time.monotonic()
         self.repeat_count: int = 0
         self.repeat_task: asyncio.Task | None = None
@@ -109,6 +111,7 @@ class AlertManager:
         session_id: str,
         block_reason: BlockReason | None,
         narration_text: str,
+        options: list[str] | None = None,
     ) -> None:
         """Register an active alert and start the repeat timer.
 
@@ -122,6 +125,7 @@ class AlertManager:
             session_id=session_id,
             block_reason=block_reason,
             narration_text=narration_text,
+            options=options,
         )
         self._active_alerts[session_id] = alert
 

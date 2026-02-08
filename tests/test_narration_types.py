@@ -275,3 +275,44 @@ class TestNarrationEvent:
         d = event.model_dump()
         assert "block_reason" in d
         assert d["block_reason"] == BlockReason.QUESTION
+
+    def test_narration_event_options_default_none(self):
+        event = NarrationEvent(
+            text="Reading file",
+            priority=NarrationPriority.NORMAL,
+            source_event_type=EventType.TOOL_EXECUTED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id="s1",
+        )
+        assert event.options is None
+
+    def test_narration_event_with_options(self):
+        event = NarrationEvent(
+            text="Agent needs permission",
+            priority=NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id="s1",
+            block_reason=BlockReason.PERMISSION_PROMPT,
+            options=["RS256", "HS256"],
+        )
+        assert event.options == ["RS256", "HS256"]
+
+    def test_narration_event_options_serialization(self):
+        event = NarrationEvent(
+            text="Which branch?",
+            priority=NarrationPriority.CRITICAL,
+            source_event_type=EventType.AGENT_BLOCKED,
+            summarization_method=SummarizationMethod.TEMPLATE,
+            session_id="s1",
+            timestamp=4000.0,
+            block_reason=BlockReason.QUESTION,
+            options=["main", "develop", "feature/x"],
+        )
+        d = event.model_dump()
+        assert d["options"] == ["main", "develop", "feature/x"]
+
+        json_str = event.model_dump_json()
+        import json
+        parsed = json.loads(json_str)
+        assert parsed["options"] == ["main", "develop", "feature/x"]

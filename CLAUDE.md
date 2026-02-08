@@ -4,25 +4,26 @@ Instructions for AI assistants working on this codebase.
 
 ## Project Overview
 
-Echo is a real-time audio bridge between developers and AI coding agents (Claude Code for MVP). It captures events from the agent, summarizes them into concise narration text, and (in future stages) converts that to speech so developers can monitor their agent without watching the screen.
+Echo is a real-time audio bridge between developers and AI coding agents (Claude Code for MVP). It captures events from the agent, summarizes them into concise narration text, converts that to speech, and allows the developer to respond verbally — all without watching the screen.
 
-**Current state:** Stages 1 (Intercept), 2 (Filter & Summarize), 3 (TTS), and 4 (Alert) are complete. Stage 5 (voice response) is planned but not yet implemented.
+**Current state:** All 5 stages complete (775 tests). The full pipeline is operational: intercept → summarize → speak → alert → voice response.
 
 ## Architecture
 
-Five-stage pipeline, four stages implemented:
+Five-stage pipeline, all stages implemented:
 
 ```
 Stage 1: Intercept     → Claude Code hooks + transcript watcher → EventBus
 Stage 2: Summarize     → EventBus → Summarizer → NarrationBus
-Stage 3: TTS           → NarrationBus → ElevenLabs + sounddevice + LiveKit (implemented)
-Stage 4: Alert         → Differentiated tones per block reason + repeat alerts (implemented)
-Stage 5: Voice Response → STT → feed response back to agent (planned)
+Stage 3: TTS           → NarrationBus → ElevenLabs + sounddevice + LiveKit
+Stage 4: Alert         → Differentiated tones per block reason + repeat alerts
+Stage 5: Voice Response → Microphone → Whisper STT → ResponseMatcher → keystroke dispatch
 ```
 
-The server is a FastAPI app running on `localhost:7865`. Events flow through two async buses:
+The server is a FastAPI app running on `localhost:7865`. Events flow through three async buses:
 - `EventBus[EchoEvent]` — raw events from Claude Code
 - `EventBus[NarrationEvent]` — summarized narration text for TTS
+- `EventBus[ResponseEvent]` — matched voice responses for dispatch (Stage 5)
 
 ## Key Conventions
 
@@ -79,20 +80,28 @@ The server is a FastAPI app running on `localhost:7865`. Events flow through two
 - `audio_player.py` — Priority-queued local audio playback via sounddevice, block-reason tone caching
 - `alert_tone.py` — Programmatic two-tone alert generation (numpy), shared sine/fade primitives
 - `alert_tones.py` — Per-block-reason alert tone generation (permission, question, idle, default)
-- `alert_manager.py` — Alert state tracking, repeat timers, EventBus subscription for resolution
+- `alert_manager.py` — Alert state tracking, repeat timers, EventBus subscription for resolution (options passthrough)
 - `livekit_publisher.py` — LiveKit Cloud room audio publishing
-- `tts_engine.py` — Core orchestrator: subscribes to NarrationBus, routes by priority, AlertManager integration
+- `tts_engine.py` — Core orchestrator: subscribes to NarrationBus, routes by priority, AlertManager integration (options passthrough)
+
+### `echo/stt/`
+- `types.py` — `STTState` (4 values), `MatchMethod` (5 values), `MatchResult`, `ResponseEvent`
+- `microphone.py` — Microphone capture with energy-based VAD (RMS threshold), `sounddevice.InputStream`
+- `stt_client.py` — OpenAI Whisper API HTTP client (httpx, health check, graceful degradation)
+- `response_matcher.py` — Transcript-to-option matching: ordinal > yes/no > direct > fuzzy > verbatim
+- `response_dispatcher.py` — Platform-specific keystroke injection: tmux > AppleScript > xdotool
+- `stt_engine.py` — Core STT orchestrator: subscribes to EventBus, coordinates capture → transcribe → match → confirm → dispatch
 
 ### `echo/server/`
-- `app.py` — FastAPI app factory with async lifespan (creates buses, summarizer, transcript watcher, TTS engine)
-- `routes.py` — `POST /event`, `GET /health` (includes TTS fields), `GET /events` (SSE), `GET /narrations` (SSE)
+- `app.py` — FastAPI app factory with async lifespan (creates buses, summarizer, transcript watcher, TTS engine, STT engine)
+- `routes.py` — `POST /event`, `POST /respond`, `GET /health` (includes TTS + STT fields), `GET /events` (SSE), `GET /narrations` (SSE), `GET /responses` (SSE)
 
 ### `echo/hooks/`
 - `on_event.sh` — Shell script that Claude Code executes; reads JSON from stdin, POSTs to server
 
 ### Root
-- `cli.py` — Click CLI: `start` (with `--no-tts` flag), `stop`, `status`, `install-hooks`, `uninstall`
-- `config.py` — Paths, ports, Ollama, ElevenLabs, LiveKit, audio configuration (all env-var overridable)
+- `cli.py` — Click CLI: `start` (with `--no-tts`, `--no-stt` flags), `stop`, `status`, `install-hooks`, `uninstall`
+- `config.py` — Paths, ports, Ollama, ElevenLabs, LiveKit, audio, STT configuration (all env-var overridable)
 
 ## Event Flow
 
@@ -120,6 +129,16 @@ Claude Code hook fires
         → [Subscriber 2] AlertManager._consume_loop()
           → Non-blocked event for active session → clear alert, cancel repeat timer
           → Repeat timer → re-play alert tone + narration every 30s (up to 5x)
+        → [Subscriber 3] STTEngine._consume_loop()
+          → agent_blocked with options → start listen task
+            → MicrophoneCapture.capture_until_silence() → PCM bytes
+            → STTClient.transcribe(audio) → "option one"
+            → ResponseMatcher.match("option one", options) → MatchResult(RS256, 0.95, ordinal)
+            → Confidence check (>= 0.6)
+            → ResponseBus.emit(ResponseEvent)
+            → TTS confirmation: "Sending: RS256"
+            → ResponseDispatcher.dispatch("RS256") → tmux send-keys
+          → Non-blocked event for active session → cancel listening
 ```
 
 ## Configuration (Environment Variables)
@@ -140,6 +159,17 @@ Claude Code hook fires
 | `LIVEKIT_API_SECRET` | `""` | LiveKit API secret |
 | `ECHO_ALERT_REPEAT_INTERVAL` | `30.0` | Seconds between repeat alerts (0 = disabled) |
 | `ECHO_ALERT_MAX_REPEATS` | `5` | Max repeat alerts before stopping |
+| `ECHO_STT_API_KEY` | `""` (empty = STT disabled) | OpenAI Whisper API key |
+| `ECHO_STT_BASE_URL` | `https://api.openai.com` | Whisper API base URL |
+| `ECHO_STT_MODEL` | `whisper-1` | Whisper model name |
+| `ECHO_STT_TIMEOUT` | `10.0` | Whisper request timeout (sec) |
+| `ECHO_STT_LISTEN_TIMEOUT` | `30.0` | Max wait for speech after alert |
+| `ECHO_STT_SILENCE_THRESHOLD` | `0.01` | RMS amplitude below which audio is silence |
+| `ECHO_STT_SILENCE_DURATION` | `1.5` | Seconds of silence to end recording |
+| `ECHO_STT_MAX_RECORD_DURATION` | `15.0` | Max recording duration per utterance |
+| `ECHO_STT_CONFIDENCE_THRESHOLD` | `0.6` | Minimum confidence to auto-dispatch |
+| `ECHO_STT_HEALTH_CHECK_INTERVAL` | `60.0` | Re-check STT availability interval |
+| `ECHO_DISPATCH_METHOD` | `""` (auto-detect) | Force: `applescript`, `xdotool`, `tmux` |
 
 ## File Paths
 
@@ -160,7 +190,7 @@ Dev: `pytest`, `pytest-asyncio`, `httpx`
 ## Common Tasks
 
 ```bash
-# Run all tests (553 tests)
+# Run all tests (775 tests)
 pytest
 
 # Run tests for a specific stage
@@ -168,12 +198,16 @@ pytest tests/test_event_types.py tests/test_event_bus.py tests/test_hook_handler
 pytest tests/test_narration_types.py tests/test_template_engine.py tests/test_event_batcher.py tests/test_llm_summarizer.py tests/test_summarizer.py tests/test_server_narrations.py  # Stage 2
 pytest tests/test_tts_types.py tests/test_tts_config.py tests/test_alert_tone.py tests/test_elevenlabs_client.py tests/test_audio_player.py tests/test_livekit_publisher.py tests/test_tts_engine.py tests/test_server_tts.py  # Stage 3
 pytest tests/test_alert_tones.py tests/test_alert_manager.py tests/test_hook_handler.py tests/test_narration_types.py tests/test_template_engine.py tests/test_audio_player.py tests/test_tts_engine.py tests/test_server_tts.py tests/test_tts_config.py  # Stage 4
+pytest tests/test_stt_types.py tests/test_microphone.py tests/test_stt_client.py tests/test_response_matcher.py tests/test_response_dispatcher.py tests/test_stt_engine.py tests/test_server_stt.py tests/test_stage5_integration.py  # Stage 5
 
 # Start server in foreground
 echo-copilot start
 
 # Start without TTS audio output
 echo-copilot start --no-tts
+
+# Start without STT voice response
+echo-copilot start --no-stt
 
 # Install the package in dev mode
 pip install -e ".[dev]"
@@ -186,10 +220,12 @@ pip install -e ".[dev]"
 - Stage 2 plan: `.claude/plans/stage2-summarize-plan.md`
 - Stage 3 plan: `.claude/plans/stage3-tts-plan.md`
 - Stage 4 plan: `.claude/plans/stage4-alert-plan.md`
+- Stage 5 plan: `.claude/plans/stage5-voice-response-plan.md`
 - Stage 1 implementation doc: `docs/stage1-intercept-implementation.md`
 - Stage 2 implementation doc: `docs/stage2-summarize-implementation.md`
 - Stage 3 implementation doc: `docs/stage3-tts-implementation.md`
 - Stage 4 implementation doc: `docs/stage4-alert-implementation.md`
+- Stage 5 implementation doc: `docs/stage5-voice-response-implementation.md`
 
 Always copy new plans to `.claude/plans/` directory.
 
