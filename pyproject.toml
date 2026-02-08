@@ -32,6 +32,9 @@ dev = [
 [project.scripts]
 echo-copilot = "echo.cli:cli"
 
+[tool.hatch.build.targets.wheel]
+packages = ["echo"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
