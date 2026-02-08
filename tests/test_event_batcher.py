@@ -1,13 +1,13 @@
-"""Tests for voice_copilot.summarizer.event_batcher — time-windowed batching."""
+"""Tests for echo.summarizer.event_batcher — time-windowed batching."""
 
 import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
 
-from voice_copilot.events.types import EventType, VoiceCopilotEvent
-from voice_copilot.summarizer.event_batcher import EventBatcher
-from voice_copilot.summarizer.types import (
+from echo.events.types import EventType, EchoEvent
+from echo.summarizer.event_batcher import EventBatcher
+from echo.summarizer.types import (
     NarrationEvent,
     NarrationPriority,
     SummarizationMethod,
@@ -20,9 +20,9 @@ from voice_copilot.summarizer.types import (
 SESSION_ID = "test-session-001"
 
 
-def _make_event(tool_name: str = "Write", index: int = 0) -> VoiceCopilotEvent:
+def _make_event(tool_name: str = "Write", index: int = 0) -> EchoEvent:
     """Create a tool_executed event for testing."""
-    return VoiceCopilotEvent(
+    return EchoEvent(
         type=EventType.TOOL_EXECUTED,
         session_id=SESSION_ID,
         source="hook",
@@ -51,9 +51,9 @@ def _mock_renderer(narration: NarrationEvent | None = None):
     if narration is None:
         narration = _make_narration()
 
-    calls: list[list[VoiceCopilotEvent]] = []
+    calls: list[list[EchoEvent]] = []
 
-    def render_batch(events: list[VoiceCopilotEvent]) -> NarrationEvent:
+    def render_batch(events: list[EchoEvent]) -> NarrationEvent:
         calls.append(list(events))
         return narration
 

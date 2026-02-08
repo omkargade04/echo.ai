@@ -12,10 +12,10 @@ from unittest.mock import AsyncMock, PropertyMock, patch
 import httpx
 import pytest
 
-from voice_copilot.events.event_bus import EventBus
-from voice_copilot.events.types import EventType, VoiceCopilotEvent
-from voice_copilot.summarizer.summarizer import Summarizer
-from voice_copilot.summarizer.types import (
+from echo.events.event_bus import EventBus
+from echo.events.types import EventType, EchoEvent
+from echo.summarizer.summarizer import Summarizer
+from echo.summarizer.types import (
     NarrationEvent,
     NarrationPriority,
     SummarizationMethod,
@@ -87,7 +87,7 @@ class TestHealthNarrationFields:
         self, async_client: httpx.AsyncClient
     ):
         """Regression: verify the original status, version, subscribers fields survive."""
-        from voice_copilot import __version__
+        from echo import __version__
 
         response = await async_client.get("/health")
         body = response.json()
@@ -289,7 +289,7 @@ class TestExistingEndpointsRegression:
         """The EventBus subscribe/receive mechanism still works for /events."""
         queue = await event_bus.subscribe()
 
-        test_event = VoiceCopilotEvent(
+        test_event = EchoEvent(
             type=EventType.SESSION_END,
             session_id="regression-sse-1",
             source="hook",

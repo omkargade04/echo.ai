@@ -1,4 +1,4 @@
-"""Tests for voice_copilot.server — FastAPI routes and SSE stream.
+"""Tests for echo.server — FastAPI routes and SSE stream.
 
 Uses httpx.AsyncClient with ASGITransport for async testing.
 The app and async_client fixtures are defined in conftest.py.
@@ -10,8 +10,8 @@ import json
 import httpx
 import pytest
 
-from voice_copilot.events.event_bus import EventBus
-from voice_copilot.events.types import EventType, VoiceCopilotEvent
+from echo.events.event_bus import EventBus
+from echo.events.types import EventType, EchoEvent
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ class TestHealthEndpoint:
         assert body["status"] == "ok"
 
     async def test_health_returns_version(self, async_client: httpx.AsyncClient):
-        from voice_copilot import __version__
+        from echo import __version__
 
         response = await async_client.get("/health")
         body = response.json()
@@ -181,7 +181,7 @@ class TestSSEEventStream:
         """
         queue = await event_bus.subscribe()
 
-        test_event = VoiceCopilotEvent(
+        test_event = EchoEvent(
             type=EventType.TOOL_EXECUTED,
             session_id="sse-test-1",
             source="hook",

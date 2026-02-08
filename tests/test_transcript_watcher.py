@@ -1,4 +1,4 @@
-"""Tests for voice_copilot.interceptors.transcript_watcher.
+"""Tests for echo.interceptors.transcript_watcher.
 
 Tests the helper functions (_extract_assistant_text, _extract_session_id)
 and the file-processing logic of _TranscriptFileHandler.  Uses tmp_path
@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from voice_copilot.events.event_bus import EventBus
-from voice_copilot.events.types import EventType
-from voice_copilot.interceptors.transcript_watcher import (
+from echo.events.event_bus import EventBus
+from echo.events.types import EventType
+from echo.interceptors.transcript_watcher import (
     TranscriptWatcher,
     _extract_assistant_text,
     _extract_session_id,
@@ -380,7 +380,7 @@ class TestTranscriptWatcherStart:
 
     async def test_missing_directory_does_not_crash(self, monkeypatch, tmp_path):
         """start() should log a warning and return when the directory is missing."""
-        import voice_copilot.interceptors.transcript_watcher as tw_mod
+        import echo.interceptors.transcript_watcher as tw_mod
 
         nonexistent = tmp_path / "does_not_exist"
         monkeypatch.setattr(tw_mod, "CLAUDE_PROJECTS_PATH", nonexistent)
@@ -398,7 +398,7 @@ class TestTranscriptWatcherStart:
         self, monkeypatch, tmp_path
     ):
         """start() should log a warning if the path is a file, not a directory."""
-        import voice_copilot.interceptors.transcript_watcher as tw_mod
+        import echo.interceptors.transcript_watcher as tw_mod
 
         some_file = tmp_path / "not_a_dir"
         some_file.write_text("I am a file")

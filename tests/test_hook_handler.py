@@ -1,7 +1,7 @@
-"""Tests for voice_copilot.interceptors.hook_handler — Parse hook JSON to events."""
+"""Tests for echo.interceptors.hook_handler — Parse hook JSON to events."""
 
-from voice_copilot.events.types import BlockReason, EventType
-from voice_copilot.interceptors.hook_handler import parse_hook_event
+from echo.events.types import BlockReason, EventType
+from echo.interceptors.hook_handler import parse_hook_event
 
 
 # ---------------------------------------------------------------------------

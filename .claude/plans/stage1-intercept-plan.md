@@ -1,9 +1,9 @@
-# Voice Copilot — Stage 1: Intercept — Implementation Plan
+# Echo — Stage 1: Intercept — Implementation Plan
 
 ## Decisions Made
 - **MVP Platform:** Claude Code only
 - **Language:** Python (FastAPI)
-- **Distribution:** Python package (`pip install voice-copilot`) + CLI
+- **Distribution:** Python package (`pip install echo-copilot`) + CLI
 - **VS Code Extension:** Not in MVP (future thin wrapper)
 - **Summarization (Stage 2):** Local LLM (Ollama/transformers)
 - **Hook Installation:** Auto-install into `~/.claude/settings.json`
@@ -14,16 +14,16 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Distribution: pip install voice-copilot                  │
+│  Distribution: pip install echo-copilot                  │
 │                                                           │
 │  Entry points:                                            │
-│  1. CLI: voice-copilot start (terminal users)             │
-│  2. Module: python -m voice_copilot (programmatic)        │
-│  3. Library: from voice_copilot import EventBus (devs)    │
+│  1. CLI: echo-copilot start (terminal users)             │
+│  2. Module: python -m echo (programmatic)        │
+│  3. Library: from echo import EventBus (devs)    │
 └──────────────────────────────────────────────────────────┘
 
 ┌──────────────┐        ┌──────────────────────────────────┐
-│ Claude Code  │        │  voice-copilot server (Python)    │
+│ Claude Code  │        │  echo-copilot server (Python)    │
 │              │        │                                    │
 │  hooks fire ─┼──POST──▶  FastAPI server (:7865)           │
 │              │        │    ├── POST /event (hook data)     │
@@ -39,18 +39,18 @@
 
 ### User Experience
 
-**Terminal user runs Claude Code in one tab, Voice Copilot in another:**
+**Terminal user runs Claude Code in one tab, Echo in another:**
 ```bash
-# Tab 1: Start Voice Copilot (one-time)
-pip install voice-copilot
-voice-copilot start
+# Tab 1: Start Echo (one-time)
+pip install echo-copilot
+echo-copilot start
 # > Hooks installed in ~/.claude/settings.json
 # > Server running on localhost:7865
 # > Listening for Claude Code events...
 
 # Tab 2: Use Claude Code normally
 claude
-# > (Voice Copilot captures all events in the background)
+# > (Echo captures all events in the background)
 ```
 
 ---
@@ -90,7 +90,7 @@ class BlockReason(str, Enum):
     IDLE_PROMPT = "idle_prompt"
     QUESTION = "question"
 
-class VoiceCopilotEvent(BaseModel):
+class EchoEvent(BaseModel):
     type: EventType
     timestamp: float
     session_id: str
@@ -118,13 +118,13 @@ class VoiceCopilotEvent(BaseModel):
 ## Package Structure
 
 ```
-voice-copilot/
+echo-copilot/
 ├── pyproject.toml                # Package config
 ├── README.md
-├── voice_copilot/
+├── echo/
 │   ├── __init__.py
-│   ├── __main__.py               # python -m voice_copilot
-│   ├── cli.py                    # CLI: voice-copilot start/stop/status
+│   ├── __main__.py               # python -m echo
+│   ├── cli.py                    # CLI: echo-copilot start/stop/status
 │   ├── config.py                 # Port, paths, settings
 │   ├── server/
 │   │   ├── __init__.py
@@ -132,12 +132,12 @@ voice-copilot/
 │   │   └── routes.py             # POST /event, GET /health, GET /events
 │   ├── interceptors/
 │   │   ├── __init__.py
-│   │   ├── hook_handler.py       # Parse hook JSON → VoiceCopilotEvent
+│   │   ├── hook_handler.py       # Parse hook JSON → EchoEvent
 │   │   ├── hook_installer.py     # Auto-install/uninstall hooks in ~/.claude/settings.json
 │   │   └── transcript_watcher.py # Watch JSONL files for assistant messages
 │   ├── events/
 │   │   ├── __init__.py
-│   │   ├── types.py              # Pydantic models (VoiceCopilotEvent, etc.)
+│   │   ├── types.py              # Pydantic models (EchoEvent, etc.)
 │   │   └── event_bus.py          # Async event bus (asyncio.Queue based)
 │   └── hooks/
 │       └── on_event.sh           # Shell script installed as Claude Code hook
@@ -164,18 +164,18 @@ voice-copilot/
 ### Step 1: Project scaffold
 - `pyproject.toml` with dependencies, CLI entry point, metadata
 - Directory structure as above
-- `voice_copilot/cli.py` with `start`, `stop`, `status` commands
+- `echo/cli.py` with `start`, `stop`, `status` commands
 
 ### Step 2: Event types + event bus
-- `voice_copilot/events/types.py` — Pydantic models (VoiceCopilotEvent, etc.)
-- `voice_copilot/events/event_bus.py` — async event bus using `asyncio.Queue`
+- `echo/events/types.py` — Pydantic models (EchoEvent, etc.)
+- `echo/events/event_bus.py` — async event bus using `asyncio.Queue`
   - `emit(event)` — push event
   - `subscribe(callback)` — register listener
   - Subscribers get called for every event (Stage 2 will subscribe here)
 
 ### Step 3: Hook handler
-- `voice_copilot/interceptors/hook_handler.py`
-- `parse_hook_event(raw_json: dict) -> VoiceCopilotEvent`
+- `echo/interceptors/hook_handler.py`
+- `parse_hook_event(raw_json: dict) -> EchoEvent`
 - Maps `hook_event_name` to event type:
   - `PostToolUse` → `tool_executed`
   - `Notification` (permission_prompt) → `agent_blocked`
@@ -185,18 +185,18 @@ voice-copilot/
   - `SessionEnd` → `session_end`
 
 ### Step 4: Hook auto-installer
-- `voice_copilot/interceptors/hook_installer.py`
+- `echo/interceptors/hook_installer.py`
 - `install_hooks()`:
   - Reads `~/.claude/settings.json`
-  - Merges Voice Copilot hooks (preserving existing user hooks)
+  - Merges Echo hooks (preserving existing user hooks)
   - Writes back
-  - Copies `on_event.sh` to `~/.voice-copilot/hooks/`
+  - Copies `on_event.sh` to `~/.echo-copilot/hooks/`
 - `uninstall_hooks()`:
-  - Removes only Voice Copilot hooks from settings
-  - Cleans up `~/.voice-copilot/hooks/`
+  - Removes only Echo hooks from settings
+  - Cleans up `~/.echo-copilot/hooks/`
 
 ### Step 5: Hook shell script
-- `voice_copilot/hooks/on_event.sh`
+- `echo/hooks/on_event.sh`
 - Reads JSON from stdin, POSTs to `localhost:7865/event`
 - Single script for all hook types (JSON contains `hook_event_name`)
 
@@ -208,7 +208,7 @@ voice-copilot/
       {
         "hooks": [{
           "type": "command",
-          "command": "~/.voice-copilot/hooks/on_event.sh",
+          "command": "~/.echo-copilot/hooks/on_event.sh",
           "async": true
         }]
       }
@@ -218,7 +218,7 @@ voice-copilot/
         "matcher": "permission_prompt|idle_prompt",
         "hooks": [{
           "type": "command",
-          "command": "~/.voice-copilot/hooks/on_event.sh"
+          "command": "~/.echo-copilot/hooks/on_event.sh"
         }]
       }
     ],
@@ -226,7 +226,7 @@ voice-copilot/
       {
         "hooks": [{
           "type": "command",
-          "command": "~/.voice-copilot/hooks/on_event.sh",
+          "command": "~/.echo-copilot/hooks/on_event.sh",
           "async": true
         }]
       }
@@ -235,7 +235,7 @@ voice-copilot/
       {
         "hooks": [{
           "type": "command",
-          "command": "~/.voice-copilot/hooks/on_event.sh",
+          "command": "~/.echo-copilot/hooks/on_event.sh",
           "async": true
         }]
       }
@@ -244,7 +244,7 @@ voice-copilot/
       {
         "hooks": [{
           "type": "command",
-          "command": "~/.voice-copilot/hooks/on_event.sh",
+          "command": "~/.echo-copilot/hooks/on_event.sh",
           "async": true
         }]
       }
@@ -256,14 +256,14 @@ voice-copilot/
 Note: `Notification` hook is **synchronous** (not async) to give time for alerting the developer before Claude continues.
 
 ### Step 6: FastAPI server
-- `voice_copilot/server/app.py` — FastAPI app with lifespan (start/stop transcript watcher)
-- `voice_copilot/server/routes.py`:
+- `echo/server/app.py` — FastAPI app with lifespan (start/stop transcript watcher)
+- `echo/server/routes.py`:
   - `POST /event` — receives hook JSON, parses via hook_handler, emits to event bus
   - `GET /health` — returns 200 + server status
   - `GET /events` — SSE stream of all events (for debugging / future UI)
 
 ### Step 7: Transcript file watcher
-- `voice_copilot/interceptors/transcript_watcher.py`
+- `echo/interceptors/transcript_watcher.py`
 - Uses `watchdog` library to watch `~/.claude/projects/` recursively for `*.jsonl`
 - Tracks byte offset per file (only reads new lines)
 - Parses JSONL entries, filters for assistant text messages
@@ -271,13 +271,13 @@ Note: `Notification` hook is **synchronous** (not async) to give time for alerti
 - Deduplicates with hook events using session_id + timestamp proximity (100ms window)
 
 ### Step 8: CLI
-- `voice_copilot/cli.py` using `click` or `typer`:
-  - `voice-copilot start [--port 7865]` — install hooks + start server (foreground)
-  - `voice-copilot start --daemon` — start as background process
-  - `voice-copilot stop` — stop background server
-  - `voice-copilot status` — show if running, active sessions
-  - `voice-copilot install-hooks` — manually install hooks only
-  - `voice-copilot uninstall` — remove hooks + clean up
+- `echo/cli.py` using `click` or `typer`:
+  - `echo-copilot start [--port 7865]` — install hooks + start server (foreground)
+  - `echo-copilot start --daemon` — start as background process
+  - `echo-copilot stop` — stop background server
+  - `echo-copilot status` — show if running, active sessions
+  - `echo-copilot install-hooks` — manually install hooks only
+  - `echo-copilot uninstall` — remove hooks + clean up
 
 ### Step 9: Tests
 - `test_hook_handler.py` — parse each hook event type correctly
@@ -291,11 +291,11 @@ Note: `Notification` hook is **synchronous** (not async) to give time for alerti
 
 1. **Unit tests:** `pytest tests/`
 2. **Integration test:**
-   - Start server: `voice-copilot start`
+   - Start server: `echo-copilot start`
    - Simulate hook: `curl -X POST localhost:7865/event -H "Content-Type: application/json" -d '{"hook_event_name": "PostToolUse", "session_id": "test", "tool_name": "Bash", "tool_input": {"command": "npm test"}, "tool_response": {"exit_code": 0}}'`
    - Verify event on SSE stream: `curl localhost:7865/events`
 3. **Manual E2E test:**
-   - Run `voice-copilot start`
+   - Run `echo-copilot start`
    - Verify hooks in `~/.claude/settings.json`
    - Open Claude Code in another terminal, give it a task
    - Observe events arriving (via SSE stream or server logs)
@@ -312,7 +312,7 @@ Note: `Notification` hook is **synchronous** (not async) to give time for alerti
 - agent-tts (file watching reference): https://github.com/kiliman/agent-tts
 - FastAPI docs: https://fastapi.tiangolo.com/
 - watchdog (file watcher): https://python-watchdog.readthedocs.io/
-- PRD: voice-copilot-prd.md (in project root)
+- PRD: echo-copilot-prd.md (in project root)
 
 ---
 
@@ -321,18 +321,18 @@ Note: `Notification` hook is **synchronous** (not async) to give time for alerti
 | File | Purpose |
 |---|---|
 | `pyproject.toml` | Package config, dependencies, CLI entry point |
-| `voice_copilot/__init__.py` | Package init |
-| `voice_copilot/__main__.py` | `python -m voice_copilot` entry |
-| `voice_copilot/cli.py` | CLI commands (start/stop/status) |
-| `voice_copilot/config.py` | Configuration (port, paths) |
-| `voice_copilot/server/app.py` | FastAPI app setup |
-| `voice_copilot/server/routes.py` | HTTP endpoints |
-| `voice_copilot/interceptors/hook_handler.py` | Parse hook JSON → VoiceCopilotEvent |
-| `voice_copilot/interceptors/hook_installer.py` | Auto-install/uninstall Claude Code hooks |
-| `voice_copilot/interceptors/transcript_watcher.py` | Watch JSONL transcripts |
-| `voice_copilot/events/types.py` | Pydantic event models |
-| `voice_copilot/events/event_bus.py` | Async event bus |
-| `voice_copilot/hooks/on_event.sh` | Shell script for Claude Code hooks |
+| `echo/__init__.py` | Package init |
+| `echo/__main__.py` | `python -m echo` entry |
+| `echo/cli.py` | CLI commands (start/stop/status) |
+| `echo/config.py` | Configuration (port, paths) |
+| `echo/server/app.py` | FastAPI app setup |
+| `echo/server/routes.py` | HTTP endpoints |
+| `echo/interceptors/hook_handler.py` | Parse hook JSON → EchoEvent |
+| `echo/interceptors/hook_installer.py` | Auto-install/uninstall Claude Code hooks |
+| `echo/interceptors/transcript_watcher.py` | Watch JSONL transcripts |
+| `echo/events/types.py` | Pydantic event models |
+| `echo/events/event_bus.py` | Async event bus |
+| `echo/hooks/on_event.sh` | Shell script for Claude Code hooks |
 | `tests/test_hook_handler.py` | Hook handler tests |
 | `tests/test_hook_installer.py` | Hook installer tests |
 | `tests/test_transcript_watcher.py` | Transcript watcher tests |

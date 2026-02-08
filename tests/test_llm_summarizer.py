@@ -1,4 +1,4 @@
-"""Tests for voice_copilot.summarizer.llm_summarizer — Ollama LLM summarizer."""
+"""Tests for echo.summarizer.llm_summarizer — Ollama LLM summarizer."""
 
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from voice_copilot.events.types import EventType, VoiceCopilotEvent
-from voice_copilot.summarizer.llm_summarizer import (
+from echo.events.types import EventType, EchoEvent
+from echo.summarizer.llm_summarizer import (
     LLMSummarizer,
     _MAX_TRUNCATION_LENGTH,
     _TRUNCATED_LENGTH,
 )
-from voice_copilot.summarizer.types import (
+from echo.summarizer.types import (
     NarrationEvent,
     NarrationPriority,
     SummarizationMethod,
@@ -28,9 +28,9 @@ def _make_agent_message_event(
     text: str | None = "Hello from the assistant",
     session_id: str = "test-session",
     event_id: str = "evt-001",
-) -> VoiceCopilotEvent:
+) -> EchoEvent:
     """Create a minimal agent_message event for testing."""
-    return VoiceCopilotEvent(
+    return EchoEvent(
         type=EventType.AGENT_MESSAGE,
         session_id=session_id,
         source="transcript",
@@ -66,7 +66,7 @@ class TestLLMSummarizerStart:
         summarizer = LLMSummarizer()
         assert summarizer._client is None
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(return_value=_mock_health_response(200))
             MockClient.return_value = instance
@@ -79,7 +79,7 @@ class TestLLMSummarizerStart:
         """When /api/tags returns 200, is_available should be True."""
         summarizer = LLMSummarizer()
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(return_value=_mock_health_response(200))
             MockClient.return_value = instance
@@ -91,7 +91,7 @@ class TestLLMSummarizerStart:
         """When /api/tags returns non-200, is_available should be False."""
         summarizer = LLMSummarizer()
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(return_value=_mock_health_response(503))
             MockClient.return_value = instance
@@ -103,7 +103,7 @@ class TestLLMSummarizerStart:
         """When /api/tags raises ConnectError, is_available should be False."""
         summarizer = LLMSummarizer()
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
             MockClient.return_value = instance
@@ -115,7 +115,7 @@ class TestLLMSummarizerStart:
         """When /api/tags raises TimeoutException, is_available should be False."""
         summarizer = LLMSummarizer()
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
             MockClient.return_value = instance
@@ -127,7 +127,7 @@ class TestLLMSummarizerStart:
         """stop() should call aclose() on the client and set it to None."""
         summarizer = LLMSummarizer()
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(return_value=_mock_health_response(200))
             instance.aclose = AsyncMock()
@@ -477,7 +477,7 @@ class TestConfigValues:
         """AsyncClient should be initialized with OLLAMA_BASE_URL."""
         summarizer = LLMSummarizer()
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(return_value=_mock_health_response(200))
             MockClient.return_value = instance
@@ -492,7 +492,7 @@ class TestConfigValues:
         """AsyncClient should be initialized with OLLAMA_TIMEOUT."""
         summarizer = LLMSummarizer()
 
-        with patch("voice_copilot.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
+        with patch("echo.summarizer.llm_summarizer.httpx.AsyncClient") as MockClient:
             instance = AsyncMock()
             instance.get = AsyncMock(return_value=_mock_health_response(200))
             MockClient.return_value = instance

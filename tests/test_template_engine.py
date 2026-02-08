@@ -1,10 +1,10 @@
-"""Tests for voice_copilot.summarizer.template_engine — TemplateEngine."""
+"""Tests for echo.summarizer.template_engine — TemplateEngine."""
 
 import pytest
 
-from voice_copilot.events.types import BlockReason, EventType, VoiceCopilotEvent
-from voice_copilot.summarizer.template_engine import TemplateEngine
-from voice_copilot.summarizer.types import (
+from echo.events.types import BlockReason, EventType, EchoEvent
+from echo.summarizer.template_engine import TemplateEngine
+from echo.summarizer.types import (
     NarrationPriority,
     SummarizationMethod,
 )
@@ -14,7 +14,7 @@ from voice_copilot.summarizer.types import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_event(**kwargs) -> VoiceCopilotEvent:
+def _make_event(**kwargs) -> EchoEvent:
     """Shorthand factory — fills in required fields with sensible defaults."""
     defaults = {
         "type": EventType.TOOL_EXECUTED,
@@ -22,7 +22,7 @@ def _make_event(**kwargs) -> VoiceCopilotEvent:
         "source": "hook",
     }
     defaults.update(kwargs)
-    return VoiceCopilotEvent(**defaults)
+    return EchoEvent(**defaults)
 
 
 @pytest.fixture

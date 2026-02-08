@@ -1,16 +1,16 @@
-"""Tests for voice_copilot.events.event_bus — Async fan-out event bus."""
+"""Tests for echo.events.event_bus — Async fan-out event bus."""
 
 import asyncio
 
 import pytest
 
-from voice_copilot.events.event_bus import EventBus
-from voice_copilot.events.types import EventType, VoiceCopilotEvent
+from echo.events.event_bus import EventBus
+from echo.events.types import EventType, EchoEvent
 
 
-def _make_event(event_type: EventType = EventType.TOOL_EXECUTED) -> VoiceCopilotEvent:
+def _make_event(event_type: EventType = EventType.TOOL_EXECUTED) -> EchoEvent:
     """Helper to create a minimal event for testing."""
-    return VoiceCopilotEvent(
+    return EchoEvent(
         type=event_type,
         session_id="bus-test-session",
         source="hook",
@@ -115,7 +115,7 @@ class TestUnsubscribe:
 
     async def test_unsubscribe_unknown_queue_is_noop(self, event_bus: EventBus):
         """Unsubscribing a queue that was never registered should not raise."""
-        foreign_queue: asyncio.Queue[VoiceCopilotEvent] = asyncio.Queue()
+        foreign_queue: asyncio.Queue[EchoEvent] = asyncio.Queue()
         # Should not raise
         await event_bus.unsubscribe(foreign_queue)
 

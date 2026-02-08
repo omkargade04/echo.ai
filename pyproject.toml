@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "voice-copilot"
+name = "echo-copilot"
 version = "0.1.0"
 description = "Real-time audio bridge between developers and AI coding agents"
 
@@ -27,7 +27,7 @@ dev = [
 ]
 
 [project.scripts]
-voice-copilot = "voice_copilot.cli:cli"
+echo-copilot = "echo.cli:cli"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,4 +1,4 @@
-# Voice Copilot — Stage 2: Filter & Summarize — Implementation Plan
+# Echo — Stage 2: Filter & Summarize — Implementation Plan
 
 **Date:** February 8, 2026
 **Status:** Planning
@@ -26,7 +26,7 @@
 ┌──────────────────────────────────────────────────────────────┐
 │  Stage 1 (existing)                                          │
 │                                                               │
-│  Claude Code hooks ──▶ EventBus ──▶ VoiceCopilotEvent        │
+│  Claude Code hooks ──▶ EventBus ──▶ EchoEvent        │
 │  Transcript watcher ──▶            (6 event types)           │
 └──────────────────────────┬───────────────────────────────────┘
                            │
@@ -66,7 +66,7 @@
 ### Data Flow
 
 ```
-VoiceCopilotEvent arrives on EventBus
+EchoEvent arrives on EventBus
   → Summarizer.consume() pulls from its subscriber queue
     → Route by event type:
       ├── tool_executed → EventBatcher.add()
@@ -184,8 +184,8 @@ OLLAMA_TIMEOUT = 5.0                        # Max seconds per request
 
 All configurable via environment variables:
 - `OLLAMA_BASE_URL`
-- `VOICE_COPILOT_LLM_MODEL`
-- `VOICE_COPILOT_LLM_TIMEOUT`
+- `ECHO_LLM_MODEL`
+- `ECHO_LLM_TIMEOUT`
 
 ### Health Check
 
@@ -219,7 +219,7 @@ class EventBatcher:
     BATCH_WINDOW_MS = 500   # Collapse events within this window
     MAX_BATCH_SIZE = 10     # Force flush after this many events
 
-    async def add(self, event: VoiceCopilotEvent) -> NarrationEvent | None:
+    async def add(self, event: EchoEvent) -> NarrationEvent | None:
         """Add event to batch. Returns NarrationEvent if batch should flush."""
 
     async def flush(self) -> NarrationEvent | None:
@@ -237,7 +237,7 @@ class EventBatcher:
 ## File Structure
 
 ```
-voice_copilot/
+echo/
 ├── summarizer/                          # NEW — Stage 2 module
 │   ├── __init__.py                     # Re-exports Summarizer, NarrationEvent, etc.
 │   ├── types.py                        # NarrationEvent, NarrationPriority, SummarizationMethod
@@ -259,22 +259,22 @@ voice_copilot/
 
 | File | Purpose | Est. Lines |
 |---|---|---|
-| `voice_copilot/summarizer/__init__.py` | Re-exports public API | ~15 |
-| `voice_copilot/summarizer/types.py` | NarrationEvent, NarrationPriority, SummarizationMethod | ~45 |
-| `voice_copilot/summarizer/summarizer.py` | Core async summarizer — subscribe, route, emit | ~120 |
-| `voice_copilot/summarizer/template_engine.py` | All template-based event-to-text mappings | ~130 |
-| `voice_copilot/summarizer/llm_summarizer.py` | Ollama client, health check, fallback | ~110 |
-| `voice_copilot/summarizer/event_batcher.py` | Time-windowed batching for tool events | ~100 |
+| `echo/summarizer/__init__.py` | Re-exports public API | ~15 |
+| `echo/summarizer/types.py` | NarrationEvent, NarrationPriority, SummarizationMethod | ~45 |
+| `echo/summarizer/summarizer.py` | Core async summarizer — subscribe, route, emit | ~120 |
+| `echo/summarizer/template_engine.py` | All template-based event-to-text mappings | ~130 |
+| `echo/summarizer/llm_summarizer.py` | Ollama client, health check, fallback | ~110 |
+| `echo/summarizer/event_batcher.py` | Time-windowed batching for tool events | ~100 |
 | `tests/test_template_engine.py` | Template rendering tests | ~150 |
 
 ### Modified Files (4)
 
 | File | Changes |
 |---|---|
-| `voice_copilot/events/types.py` | Add `event_id: str` field (uuid4 default) for traceability |
-| `voice_copilot/server/app.py` | Create NarrationBus + Summarizer in lifespan, start/stop |
-| `voice_copilot/server/routes.py` | Add `GET /narrations` SSE endpoint |
-| `voice_copilot/config.py` | Add `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT` constants |
+| `echo/events/types.py` | Add `event_id: str` field (uuid4 default) for traceability |
+| `echo/server/app.py` | Create NarrationBus + Summarizer in lifespan, start/stop |
+| `echo/server/routes.py` | Add `GET /narrations` SSE endpoint |
+| `echo/config.py` | Add `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_TIMEOUT` constants |
 
 ### Test Files (6)
 
@@ -318,7 +318,7 @@ class Summarizer:
 
 ### Reusing EventBus for NarrationBus
 
-The existing `EventBus` class is generic enough — it accepts `VoiceCopilotEvent` but we can create a typed alias or make it generic. The simplest approach: create a second `EventBus` instance specifically for narrations and store `NarrationEvent` objects (they share the same queue-based fan-out pattern).
+The existing `EventBus` class is generic enough — it accepts `EchoEvent` but we can create a typed alias or make it generic. The simplest approach: create a second `EventBus` instance specifically for narrations and store `NarrationEvent` objects (they share the same queue-based fan-out pattern).
 
 **Decision:** Make `EventBus` generic over event type rather than creating a separate class. This avoids code duplication:
 
@@ -330,7 +330,7 @@ class EventBus(Generic[T]):
     async def subscribe(self) -> asyncio.Queue[T]: ...
 
 # Usage:
-event_bus: EventBus[VoiceCopilotEvent] = EventBus()        # Stage 1
+event_bus: EventBus[EchoEvent] = EventBus()        # Stage 1
 narration_bus: EventBus[NarrationEvent] = EventBus()        # Stage 2
 ```
 
@@ -360,7 +360,7 @@ await summarizer.stop()
 | Generic EventBus | Make EventBus generic (Generic[T]) | Avoids duplicating the fan-out bus code. NarrationBus = EventBus[NarrationEvent]. |
 | Narration text style | Short, imperative, present tense | Optimized for TTS output: "Edited auth.ts. Running tests." not "The agent has edited the file auth.ts and is now running tests." |
 | No streaming from Ollama | `stream: false` | Summary is <20 words — streaming adds complexity for negligible latency gain |
-| event_id on VoiceCopilotEvent | Add uuid4 | Enables NarrationEvent to reference its source event for debugging/tracing |
+| event_id on EchoEvent | Add uuid4 | Enables NarrationEvent to reference its source event for debugging/tracing |
 
 ---
 
@@ -385,19 +385,19 @@ await summarizer.stop()
 ## Task Breakdown
 
 ### Task 1: NarrationEvent types (no dependencies)
-**Files:** `voice_copilot/summarizer/__init__.py`, `voice_copilot/summarizer/types.py`
+**Files:** `echo/summarizer/__init__.py`, `echo/summarizer/types.py`
 - NarrationEvent, NarrationPriority, SummarizationMethod Pydantic models
 - Tests: `tests/test_narration_types.py`
 
 ### Task 2: Make EventBus generic (no dependencies)
-**Files:** `voice_copilot/events/event_bus.py`, `voice_copilot/events/types.py`
+**Files:** `echo/events/event_bus.py`, `echo/events/types.py`
 - Refactor EventBus to `EventBus(Generic[T])`
-- Add `event_id: str = Field(default_factory=lambda: str(uuid4()))` to VoiceCopilotEvent
+- Add `event_id: str = Field(default_factory=lambda: str(uuid4()))` to EchoEvent
 - Ensure all existing Stage 1 tests still pass
 - Tests: verify existing `test_event_bus.py` still passes
 
 ### Task 3: Template engine (depends on Task 1)
-**Files:** `voice_copilot/summarizer/template_engine.py`
+**Files:** `echo/summarizer/template_engine.py`
 - All tool-specific templates (Bash, Read, Edit, Write, Glob, Grep, etc.)
 - agent_blocked templates (with options rendering)
 - agent_stopped, session_start, session_end templates
@@ -405,7 +405,7 @@ await summarizer.stop()
 - Tests: `tests/test_template_engine.py`
 
 ### Task 4: Event batcher (depends on Task 1)
-**Files:** `voice_copilot/summarizer/event_batcher.py`
+**Files:** `echo/summarizer/event_batcher.py`
 - Time-windowed batching with 500ms window
 - Max batch size enforcement
 - Immediate flush on priority event
@@ -413,7 +413,7 @@ await summarizer.stop()
 - Tests: `tests/test_event_batcher.py`
 
 ### Task 5: LLM summarizer (depends on Task 1)
-**Files:** `voice_copilot/summarizer/llm_summarizer.py`, update `voice_copilot/config.py`
+**Files:** `echo/summarizer/llm_summarizer.py`, update `echo/config.py`
 - Ollama HTTP client using httpx.AsyncClient
 - Health check on startup + periodic re-check
 - Summarization prompt template
@@ -422,7 +422,7 @@ await summarizer.stop()
 - Tests: `tests/test_llm_summarizer.py`
 
 ### Task 6: Core Summarizer (depends on Tasks 1-5)
-**Files:** `voice_copilot/summarizer/summarizer.py`
+**Files:** `echo/summarizer/summarizer.py`
 - Subscribe to EventBus, consume loop
 - Route events to TemplateEngine / EventBatcher / LLMSummarizer
 - Emit NarrationEvents to NarrationBus
@@ -430,7 +430,7 @@ await summarizer.stop()
 - Tests: `tests/test_summarizer.py`
 
 ### Task 7: Server integration (depends on Tasks 2, 6)
-**Files:** update `voice_copilot/server/app.py`, update `voice_copilot/server/routes.py`
+**Files:** update `echo/server/app.py`, update `echo/server/routes.py`
 - Wire NarrationBus + Summarizer into app lifespan
 - Add `GET /narrations` SSE endpoint (mirrors `/events` pattern)
 - Update `GET /health` to include narration_subscribers + ollama_status
@@ -463,7 +463,7 @@ Task 2 ────────────────────────�
 1. **Unit tests:** `pytest tests/` — all ~230 tests (110 Stage 1 + ~120 Stage 2)
 2. **Integration test:**
    ```bash
-   voice-copilot start
+   echo-copilot start
    # In another terminal:
    curl -X POST localhost:7865/event \
      -H "Content-Type: application/json" \
@@ -490,7 +490,7 @@ Task 2 ────────────────────────�
 | Component | Technology | Notes |
 |---|---|---|
 | LLM Backend | Ollama (HTTP API) | No Python SDK needed — httpx calls `/api/generate` |
-| LLM Model | qwen2.5:0.5b | User can override via `VOICE_COPILOT_LLM_MODEL` env var |
+| LLM Model | qwen2.5:0.5b | User can override via `ECHO_LLM_MODEL` env var |
 | New Python deps | None | httpx already in dependencies |
 
 ---

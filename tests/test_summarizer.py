@@ -1,15 +1,15 @@
-"""Tests for voice_copilot.summarizer.summarizer — Core Summarizer orchestrator."""
+"""Tests for echo.summarizer.summarizer — Core Summarizer orchestrator."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from voice_copilot.events.event_bus import EventBus
-from voice_copilot.events.types import BlockReason, EventType, VoiceCopilotEvent
-from voice_copilot.summarizer.summarizer import Summarizer
-from voice_copilot.summarizer.template_engine import TemplateEngine
-from voice_copilot.summarizer.types import (
+from echo.events.event_bus import EventBus
+from echo.events.types import BlockReason, EventType, EchoEvent
+from echo.summarizer.summarizer import Summarizer
+from echo.summarizer.template_engine import TemplateEngine
+from echo.summarizer.types import (
     NarrationEvent,
     NarrationPriority,
     SummarizationMethod,
@@ -26,15 +26,15 @@ _SESSION = "test-session-summarizer"
 def _make_event(
     event_type: EventType = EventType.TOOL_EXECUTED,
     **kwargs,
-) -> VoiceCopilotEvent:
-    """Helper to create a minimal VoiceCopilotEvent for testing."""
+) -> EchoEvent:
+    """Helper to create a minimal EchoEvent for testing."""
     defaults = {
         "type": event_type,
         "session_id": _SESSION,
         "source": "hook",
     }
     defaults.update(kwargs)
-    return VoiceCopilotEvent(**defaults)
+    return EchoEvent(**defaults)
 
 
 def _make_narration(
@@ -66,7 +66,7 @@ def narration_bus() -> EventBus:
 
 @pytest.fixture
 def source_bus() -> EventBus:
-    """Return a fresh EventBus for source VoiceCopilotEvents."""
+    """Return a fresh EventBus for source EchoEvents."""
     return EventBus(maxsize=64)
 
 

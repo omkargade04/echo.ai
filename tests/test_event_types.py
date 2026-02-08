@@ -1,8 +1,8 @@
-"""Tests for voice_copilot.events.types — Pydantic event models."""
+"""Tests for echo.events.types — Pydantic event models."""
 
 import time
 
-from voice_copilot.events.types import BlockReason, EventType, VoiceCopilotEvent
+from echo.events.types import BlockReason, EventType, EchoEvent
 
 
 # ---------------------------------------------------------------------------
@@ -66,15 +66,15 @@ class TestBlockReason:
 
 
 # ---------------------------------------------------------------------------
-# VoiceCopilotEvent model
+# EchoEvent model
 # ---------------------------------------------------------------------------
 
 
-class TestVoiceCopilotEvent:
-    """Tests for the VoiceCopilotEvent Pydantic model."""
+class TestEchoEvent:
+    """Tests for the EchoEvent Pydantic model."""
 
     def test_create_with_required_fields(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.TOOL_EXECUTED,
             session_id="session-abc",
             source="hook",
@@ -85,7 +85,7 @@ class TestVoiceCopilotEvent:
 
     def test_default_timestamp_is_auto_populated(self):
         before = time.time()
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.SESSION_START,
             session_id="s1",
             source="hook",
@@ -94,7 +94,7 @@ class TestVoiceCopilotEvent:
         assert before <= event.timestamp <= after
 
     def test_explicit_timestamp_overrides_default(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.SESSION_START,
             session_id="s1",
             source="hook",
@@ -103,7 +103,7 @@ class TestVoiceCopilotEvent:
         assert event.timestamp == 1234567890.0
 
     def test_source_accepts_hook(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.SESSION_START,
             session_id="s1",
             source="hook",
@@ -111,7 +111,7 @@ class TestVoiceCopilotEvent:
         assert event.source == "hook"
 
     def test_source_accepts_transcript(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.AGENT_MESSAGE,
             session_id="s1",
             source="transcript",
@@ -119,7 +119,7 @@ class TestVoiceCopilotEvent:
         assert event.source == "transcript"
 
     def test_optional_tool_fields_default_to_none(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.TOOL_EXECUTED,
             session_id="s1",
             source="hook",
@@ -129,7 +129,7 @@ class TestVoiceCopilotEvent:
         assert event.tool_output is None
 
     def test_optional_block_fields_default_to_none(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.AGENT_BLOCKED,
             session_id="s1",
             source="hook",
@@ -139,7 +139,7 @@ class TestVoiceCopilotEvent:
         assert event.options is None
 
     def test_optional_text_field_default_to_none(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.AGENT_MESSAGE,
             session_id="s1",
             source="transcript",
@@ -147,7 +147,7 @@ class TestVoiceCopilotEvent:
         assert event.text is None
 
     def test_optional_stop_reason_default_to_none(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.AGENT_STOPPED,
             session_id="s1",
             source="hook",
@@ -155,7 +155,7 @@ class TestVoiceCopilotEvent:
         assert event.stop_reason is None
 
     def test_tool_executed_event_with_all_fields(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.TOOL_EXECUTED,
             session_id="s1",
             source="hook",
@@ -168,7 +168,7 @@ class TestVoiceCopilotEvent:
         assert event.tool_output == {"stdout": "file1.py\nfile2.py"}
 
     def test_agent_blocked_event_with_all_fields(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.AGENT_BLOCKED,
             session_id="s1",
             source="hook",
@@ -181,7 +181,7 @@ class TestVoiceCopilotEvent:
         assert event.options == ["yes", "no"]
 
     def test_serialization_to_dict(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.TOOL_EXECUTED,
             session_id="s1",
             source="hook",
@@ -197,7 +197,7 @@ class TestVoiceCopilotEvent:
         assert d["tool_name"] == "Read"
 
     def test_serialization_to_json(self):
-        event = VoiceCopilotEvent(
+        event = EchoEvent(
             type=EventType.TOOL_EXECUTED,
             session_id="s1",
             source="hook",
@@ -212,7 +212,7 @@ class TestVoiceCopilotEvent:
 
     def test_model_roundtrip(self):
         """Serialize to dict and reconstruct — should produce equal object."""
-        original = VoiceCopilotEvent(
+        original = EchoEvent(
             type=EventType.AGENT_BLOCKED,
             session_id="sess-42",
             source="hook",
@@ -220,5 +220,5 @@ class TestVoiceCopilotEvent:
             block_reason=BlockReason.IDLE_PROMPT,
             message="Waiting for input",
         )
-        rebuilt = VoiceCopilotEvent(**original.model_dump())
+        rebuilt = EchoEvent(**original.model_dump())
         assert rebuilt == original

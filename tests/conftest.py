@@ -1,14 +1,14 @@
-"""Shared fixtures for Voice Copilot tests."""
+"""Shared fixtures for Echo tests."""
 
 from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
 import httpx
 
-from voice_copilot.events.event_bus import EventBus
-from voice_copilot.events.types import EventType, VoiceCopilotEvent
-from voice_copilot.summarizer.summarizer import Summarizer
-from voice_copilot.summarizer.types import NarrationEvent
+from echo.events.event_bus import EventBus
+from echo.events.types import EventType, EchoEvent
+from echo.summarizer.summarizer import Summarizer
+from echo.summarizer.types import NarrationEvent
 
 
 @pytest.fixture
@@ -24,9 +24,9 @@ def narration_bus() -> EventBus:
 
 
 @pytest.fixture
-def sample_event() -> VoiceCopilotEvent:
-    """Return a sample VoiceCopilotEvent for use in tests."""
-    return VoiceCopilotEvent(
+def sample_event() -> EchoEvent:
+    """Return a sample EchoEvent for use in tests."""
+    return EchoEvent(
         type=EventType.TOOL_EXECUTED,
         session_id="test-session-001",
         source="hook",
@@ -44,13 +44,13 @@ def summarizer(event_bus: EventBus, narration_bus: EventBus) -> Summarizer:
     so all summarization falls through to template/truncation paths.
     """
     with patch(
-        "voice_copilot.summarizer.llm_summarizer.LLMSummarizer.start",
+        "echo.summarizer.llm_summarizer.LLMSummarizer.start",
         new_callable=AsyncMock,
     ), patch(
-        "voice_copilot.summarizer.llm_summarizer.LLMSummarizer.stop",
+        "echo.summarizer.llm_summarizer.LLMSummarizer.stop",
         new_callable=AsyncMock,
     ), patch(
-        "voice_copilot.summarizer.llm_summarizer.LLMSummarizer.is_available",
+        "echo.summarizer.llm_summarizer.LLMSummarizer.is_available",
         new_callable=PropertyMock,
         return_value=False,
     ):
@@ -62,7 +62,7 @@ def summarizer(event_bus: EventBus, narration_bus: EventBus) -> Summarizer:
 def app(event_bus: EventBus, narration_bus: EventBus, summarizer: Summarizer):
     """Return a FastAPI test app with fresh EventBus, NarrationBus, and Summarizer."""
     from fastapi import FastAPI
-    from voice_copilot.server.routes import router
+    from echo.server.routes import router
 
     test_app = FastAPI()
     test_app.state.event_bus = event_bus

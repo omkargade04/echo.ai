@@ -9,12 +9,12 @@
 
 ## Overview
 
-Stage 2 implements the **summarization layer** for Voice Copilot. It subscribes to the Stage 1 event bus, converts raw `VoiceCopilotEvent` objects into concise narration text optimized for text-to-speech, and publishes `NarrationEvent` objects on a dedicated narration bus for downstream consumers (Stage 3: TTS).
+Stage 2 implements the **summarization layer** for Echo. It subscribes to the Stage 1 event bus, converts raw `EchoEvent` objects into concise narration text optimized for text-to-speech, and publishes `NarrationEvent` objects on a dedicated narration bus for downstream consumers (Stage 3: TTS).
 
 ### Key Capability
 
 ```
-VoiceCopilotEvent (raw)                  NarrationEvent (TTS-ready)
+EchoEvent (raw)                  NarrationEvent (TTS-ready)
 ─────────────────────                    ─────────────────────────
 tool_executed(Bash, "npm test")    →     "Ran command: npm test"
 agent_blocked(permission_prompt)   →     "The agent needs permission. Allow edit of auth.ts?"
@@ -35,7 +35,7 @@ agent_message(long assistant text) →     "Refactored auth module and added tes
 ┌──────────────────────────────────────────────────────────────┐
 │  Stage 1 (existing)                                          │
 │                                                               │
-│  Claude Code hooks ──▶ EventBus ──▶ VoiceCopilotEvent        │
+│  Claude Code hooks ──▶ EventBus ──▶ EchoEvent        │
 │  Transcript watcher ──▶            (6 event types)           │
 └──────────────────────────┬───────────────────────────────────┘
                            │
@@ -75,7 +75,7 @@ agent_message(long assistant text) →     "Refactored auth module and added tes
 ### Data Flow
 
 ```
-VoiceCopilotEvent arrives on EventBus
+EchoEvent arrives on EventBus
   → Summarizer._consume_loop() pulls from its subscriber queue
     → _process_event() routes by event type:
       ├── tool_executed → EventBatcher.add()
@@ -125,7 +125,7 @@ class NarrationEvent(BaseModel):
     summarization_method: SummarizationMethod     # How the text was generated
     session_id: str                              # Carried from source event
     timestamp: float = Field(default_factory=time.time)
-    source_event_id: str | None = None           # UUID linking back to source VoiceCopilotEvent
+    source_event_id: str | None = None           # UUID linking back to source EchoEvent
 ```
 
 ---
@@ -133,8 +133,8 @@ class NarrationEvent(BaseModel):
 ## File Structure
 
 ```
-voice-copilot/
-├── voice_copilot/
+echo-copilot/
+├── echo/
 │   ├── summarizer/                          # NEW — Stage 2 module
 │   │   ├── __init__.py                     # Re-exports: Summarizer, NarrationEvent, etc.
 │   │   ├── types.py                        # NarrationEvent, NarrationPriority, SummarizationMethod
@@ -166,7 +166,7 @@ voice-copilot/
 
 ## Component Details
 
-### 1. NarrationEvent Types (`voice_copilot/summarizer/types.py`)
+### 1. NarrationEvent Types (`echo/summarizer/types.py`)
 
 Pydantic v2 models for the narration output format, following the same style as Stage 1's `events/types.py`:
 
@@ -174,7 +174,7 @@ Pydantic v2 models for the narration output format, following the same style as 
 - `SummarizationMethod` — 3-value string enum (template, llm, truncation)
 - `NarrationEvent` — Pydantic `BaseModel` with required fields (`text`, `priority`, `source_event_type`, `summarization_method`, `session_id`) and auto-populated `timestamp`
 
-### 2. Template Engine (`voice_copilot/summarizer/template_engine.py`)
+### 2. Template Engine (`echo/summarizer/template_engine.py`)
 
 Deterministic event-to-narration-text mapper with two public methods:
 
@@ -210,7 +210,7 @@ File path handling: Full paths are reduced to basenames via `Path(path).name` fo
 
 Defensive coding: All input fields use `.get()` with defaults, `tool_input` guarded against `None`, top-level try/except ensures no exceptions propagate.
 
-### 3. Event Batcher (`voice_copilot/summarizer/event_batcher.py`)
+### 3. Event Batcher (`echo/summarizer/event_batcher.py`)
 
 Time-windowed batcher that collapses rapid consecutive `tool_executed` events:
 
@@ -227,7 +227,7 @@ Key design:
 - `CancelledError` handled gracefully in timer tasks
 - Never raises exceptions — all errors caught and logged at debug level
 
-### 4. LLM Summarizer (`voice_copilot/summarizer/llm_summarizer.py`)
+### 4. LLM Summarizer (`echo/summarizer/llm_summarizer.py`)
 
 Ollama-based summarizer for `agent_message` events with truncation fallback:
 
@@ -253,11 +253,11 @@ Ollama-based summarizer for `agent_message` events with truncation fallback:
 | Constant | Env Var | Default |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `OLLAMA_BASE_URL` | `http://localhost:11434` |
-| `OLLAMA_MODEL` | `VOICE_COPILOT_LLM_MODEL` | `qwen2.5:0.5b` |
-| `OLLAMA_TIMEOUT` | `VOICE_COPILOT_LLM_TIMEOUT` | `5.0` seconds |
+| `OLLAMA_MODEL` | `ECHO_LLM_MODEL` | `qwen2.5:0.5b` |
+| `OLLAMA_TIMEOUT` | `ECHO_LLM_TIMEOUT` | `5.0` seconds |
 | `OLLAMA_HEALTH_CHECK_INTERVAL` | — | `60.0` seconds |
 
-### 5. Summarizer (`voice_copilot/summarizer/summarizer.py`)
+### 5. Summarizer (`echo/summarizer/summarizer.py`)
 
 Core async orchestrator that ties all Stage 2 components together:
 
@@ -290,7 +290,7 @@ Summarizer(event_bus, narration_bus)
 
 **Error handling:** Processing errors on individual events are logged and skipped — the consume loop never crashes. The only way it stops is via `CancelledError` from `stop()`.
 
-### 6. Generic EventBus (`voice_copilot/events/event_bus.py`)
+### 6. Generic EventBus (`echo/events/event_bus.py`)
 
 Refactored from Stage 1 to support `Generic[T]`:
 
@@ -303,7 +303,7 @@ class EventBus(Generic[T]):
 
 **Usage in production:**
 ```python
-event_bus: EventBus[VoiceCopilotEvent] = EventBus()    # Stage 1 events
+event_bus: EventBus[EchoEvent] = EventBus()    # Stage 1 events
 narration_bus: EventBus[NarrationEvent] = EventBus()    # Stage 2 narrations
 ```
 
@@ -331,7 +331,7 @@ Backward-compatible — `EventBus()` without type parameter still works. Log mes
 }
 ```
 
-### 8. VoiceCopilotEvent Enhancement
+### 8. EchoEvent Enhancement
 
 Added `event_id` field for traceability:
 ```python
@@ -354,7 +354,7 @@ Every event now gets a unique UUID. `NarrationEvent.source_event_id` references 
 | Generic EventBus | Make EventBus `Generic[T]` | Avoids duplicating the fan-out bus code. NarrationBus = EventBus[NarrationEvent] |
 | Narration text style | Short, imperative, present tense | Optimized for TTS: "Edited auth.ts. Running tests." not "The agent has edited the file auth.ts and is now running tests." |
 | No streaming from Ollama | `stream: false` | Summary is <20 words — streaming adds complexity for negligible latency gain |
-| event_id on VoiceCopilotEvent | uuid4 auto-generated | Enables NarrationEvent to reference its source event for debugging/tracing |
+| event_id on EchoEvent | uuid4 auto-generated | Enables NarrationEvent to reference its source event for debugging/tracing |
 | Batcher render injection | Constructor injection (`render_batch` callable) | Decouples batcher from TemplateEngine; enables easy testing with mocks |
 | File path basenames | `Path(path).name` | Full paths are too verbose for TTS; "auth.ts" is clearer than "/Users/dev/project/src/auth.ts" |
 
@@ -366,7 +366,7 @@ Every event now gets a unique UUID. `NarrationEvent.source_event_id` references 
 |---|---|---|
 | Narration models | Pydantic v2 | Same pattern as Stage 1 event models |
 | LLM backend | Ollama (HTTP API) | No Python SDK needed — httpx calls `/api/generate` |
-| LLM model | qwen2.5:0.5b | User can override via `VOICE_COPILOT_LLM_MODEL` env var |
+| LLM model | qwen2.5:0.5b | User can override via `ECHO_LLM_MODEL` env var |
 | HTTP client | httpx.AsyncClient | Already a project dependency from Stage 1 |
 | Event bus | asyncio.Queue (Generic) | Reuses Stage 1 EventBus, now generic |
 | SSE streaming | sse-starlette | Same as Stage 1 `/events` endpoint |

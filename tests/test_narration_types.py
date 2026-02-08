@@ -1,4 +1,4 @@
-"""Tests for voice_copilot.summarizer.types — narration event models."""
+"""Tests for echo.summarizer.types — narration event models."""
 
 import json
 import time
@@ -6,8 +6,8 @@ import time
 import pytest
 from pydantic import ValidationError
 
-from voice_copilot.events.types import EventType
-from voice_copilot.summarizer.types import (
+from echo.events.types import EventType
+from echo.summarizer.types import (
     NarrationEvent,
     NarrationPriority,
     SummarizationMethod,

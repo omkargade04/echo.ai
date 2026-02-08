@@ -1,4 +1,4 @@
-"""Tests for voice_copilot.interceptors.hook_installer — Install/uninstall hooks.
+"""Tests for echo.interceptors.hook_installer — Install/uninstall hooks.
 
 All tests use tmp_path and monkeypatch to override config paths.
 We NEVER touch the user's real ~/.claude/settings.json.
@@ -21,7 +21,7 @@ def fake_env(tmp_path, monkeypatch):
 
     Creates:
       - A fake ~/.claude/ directory with a settings.json location
-      - A fake ~/.voice-copilot/hooks/ directory
+      - A fake ~/.echo-copilot/hooks/ directory
       - A fake bundled on_event.sh script
 
     Monkeypatches the config module constants AND the hook_installer module
@@ -31,7 +31,7 @@ def fake_env(tmp_path, monkeypatch):
     claude_dir.mkdir()
     settings_path = claude_dir / "settings.json"
 
-    vc_dir = tmp_path / ".voice-copilot"
+    vc_dir = tmp_path / ".echo-copilot"
     hooks_dir = vc_dir / "hooks"
 
     # Create the fake bundled script that _deploy_hook_script() copies
@@ -39,14 +39,14 @@ def fake_env(tmp_path, monkeypatch):
     bundled_script.write_text("#!/bin/bash\n# fake hook script\n")
 
     # Patch config module paths
-    import voice_copilot.config as config_mod
+    import echo.config as config_mod
 
     monkeypatch.setattr(config_mod, "CLAUDE_SETTINGS_PATH", settings_path)
-    monkeypatch.setattr(config_mod, "VOICE_COPILOT_DIR", vc_dir)
+    monkeypatch.setattr(config_mod, "ECHO_DIR", vc_dir)
     monkeypatch.setattr(config_mod, "HOOKS_DIR", hooks_dir)
 
     # Patch hook_installer module paths (already imported from config)
-    import voice_copilot.interceptors.hook_installer as installer_mod
+    import echo.interceptors.hook_installer as installer_mod
 
     monkeypatch.setattr(installer_mod, "CLAUDE_SETTINGS_PATH", settings_path)
     monkeypatch.setattr(installer_mod, "HOOKS_DIR", hooks_dir)
@@ -80,7 +80,7 @@ class TestInstallHooks:
     """Tests for install_hooks()."""
 
     def test_install_creates_settings_when_file_does_not_exist(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import install_hooks
+        from echo.interceptors.hook_installer import install_hooks
 
         settings_path = fake_env["settings_path"]
         assert not settings_path.exists()
@@ -102,7 +102,7 @@ class TestInstallHooks:
 
     def test_install_merges_with_existing_settings(self, fake_env):
         """Existing user settings and hooks are preserved."""
-        from voice_copilot.interceptors.hook_installer import install_hooks
+        from echo.interceptors.hook_installer import install_hooks
 
         settings_path = fake_env["settings_path"]
 
@@ -137,12 +137,12 @@ class TestInstallHooks:
             for h in entry.get("hooks", [])
         ]
         assert "my-custom-logger.sh" in user_commands
-        # Voice Copilot hook also present
-        assert "~/.voice-copilot/hooks/on_event.sh" in user_commands
+        # Echo hook also present
+        assert "~/.echo-copilot/hooks/on_event.sh" in user_commands
 
     def test_install_is_idempotent(self, fake_env):
         """Running install_hooks twice should not duplicate entries."""
-        from voice_copilot.interceptors.hook_installer import install_hooks
+        from echo.interceptors.hook_installer import install_hooks
 
         settings_path = fake_env["settings_path"]
 
@@ -160,7 +160,7 @@ class TestInstallHooks:
 
     def test_install_deploys_hook_script(self, fake_env):
         """The bundled on_event.sh should be copied to hooks_dir."""
-        from voice_copilot.interceptors.hook_installer import install_hooks
+        from echo.interceptors.hook_installer import install_hooks
 
         hooks_dir = fake_env["hooks_dir"]
 
@@ -172,7 +172,7 @@ class TestInstallHooks:
 
     def test_install_creates_backup_of_existing_settings(self, fake_env):
         """A .bak file should be created when settings already exist."""
-        from voice_copilot.interceptors.hook_installer import install_hooks
+        from echo.interceptors.hook_installer import install_hooks
 
         settings_path = fake_env["settings_path"]
         _write_settings(settings_path, {"existing": True})
@@ -193,8 +193,8 @@ class TestInstallHooks:
 class TestUninstallHooks:
     """Tests for uninstall_hooks()."""
 
-    def test_uninstall_removes_voice_copilot_hooks(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import (
+    def test_uninstall_removes_echo_hooks(self, fake_env):
+        from echo.interceptors.hook_installer import (
             install_hooks,
             uninstall_hooks,
         )
@@ -209,14 +209,14 @@ class TestUninstallHooks:
         assert "hooks" not in data or data["hooks"] == {}
 
     def test_uninstall_preserves_user_hooks(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import (
+        from echo.interceptors.hook_installer import (
             install_hooks,
             uninstall_hooks,
         )
 
         settings_path = fake_env["settings_path"]
 
-        # Set up a user hook, then install Voice Copilot hooks
+        # Set up a user hook, then install Echo hooks
         existing = {
             "hooks": {
                 "PostToolUse": [
@@ -241,11 +241,11 @@ class TestUninstallHooks:
             for h in entry.get("hooks", [])
         ]
         assert "my-logger.sh" in remaining_commands
-        assert "~/.voice-copilot/hooks/on_event.sh" not in remaining_commands
+        assert "~/.echo-copilot/hooks/on_event.sh" not in remaining_commands
 
     def test_uninstall_when_no_settings_file_is_noop(self, fake_env):
         """Uninstalling when settings.json does not exist should not error."""
-        from voice_copilot.interceptors.hook_installer import uninstall_hooks
+        from echo.interceptors.hook_installer import uninstall_hooks
 
         settings_path = fake_env["settings_path"]
         assert not settings_path.exists()
@@ -253,7 +253,7 @@ class TestUninstallHooks:
         uninstall_hooks()
 
     def test_uninstall_cleans_up_deployed_script(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import (
+        from echo.interceptors.hook_installer import (
             install_hooks,
             uninstall_hooks,
         )
@@ -275,19 +275,19 @@ class TestAreHooksInstalled:
     """Tests for are_hooks_installed()."""
 
     def test_returns_false_when_no_settings_file(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import are_hooks_installed
+        from echo.interceptors.hook_installer import are_hooks_installed
 
         assert not fake_env["settings_path"].exists()
         assert are_hooks_installed() is False
 
     def test_returns_false_when_no_hooks_section(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import are_hooks_installed
+        from echo.interceptors.hook_installer import are_hooks_installed
 
         _write_settings(fake_env["settings_path"], {"theme": "dark"})
         assert are_hooks_installed() is False
 
     def test_returns_true_after_install(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import (
+        from echo.interceptors.hook_installer import (
             are_hooks_installed,
             install_hooks,
         )
@@ -296,7 +296,7 @@ class TestAreHooksInstalled:
         assert are_hooks_installed() is True
 
     def test_returns_false_after_uninstall(self, fake_env):
-        from voice_copilot.interceptors.hook_installer import (
+        from echo.interceptors.hook_installer import (
             are_hooks_installed,
             install_hooks,
             uninstall_hooks,

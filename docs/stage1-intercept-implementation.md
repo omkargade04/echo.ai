@@ -8,13 +8,13 @@
 
 ## Overview
 
-Stage 1 implements the **event interception layer** for Voice Copilot. It captures real-time events from Claude Code via its native hooks system, normalizes them into typed events, and exposes them on an async event bus for downstream consumers (Stage 2: Summarization, Stage 3: TTS).
+Stage 1 implements the **event interception layer** for Echo. It captures real-time events from Claude Code via its native hooks system, normalizes them into typed events, and exposes them on an async event bus for downstream consumers (Stage 2: Summarization, Stage 3: TTS).
 
 ### Distribution
 
 ```
-pip install voice-copilot
-voice-copilot start
+pip install echo-copilot
+echo-copilot start
 ```
 
 The package installs as a Python CLI tool. When started, it:
@@ -29,7 +29,7 @@ The package installs as a Python CLI tool. When started, it:
 
 ```
 ┌──────────────┐        ┌──────────────────────────────────┐
-│ Claude Code  │        │  voice-copilot server (Python)    │
+│ Claude Code  │        │  echo-copilot server (Python)    │
 │              │        │                                    │
 │  hooks fire ─┼──POST──▶  FastAPI server (:7865)           │
 │              │        │    ├── POST /event (hook data)     │
@@ -49,7 +49,7 @@ The package installs as a Python CLI tool. When started, it:
 Claude Code hook fires
   → on_event.sh reads JSON from stdin, POSTs to localhost:7865/event
     → FastAPI route receives raw JSON
-      → hook_handler.parse_hook_event() normalizes to VoiceCopilotEvent
+      → hook_handler.parse_hook_event() normalizes to EchoEvent
         → EventBus.emit() fans out to all subscriber queues
           → SSE stream (GET /events) for debugging
           → Future: Stage 2 summarizer subscribes here
@@ -94,13 +94,13 @@ The `agent_blocked` event is the most critical — it solves the "silent blockin
 ## File Structure
 
 ```
-voice-copilot/
+echo-copilot/
 ├── pyproject.toml                          # Package config, dependencies, CLI entry point
 ├── docs/
 │   └── stage1-intercept-implementation.md  # This document
-├── voice_copilot/
+├── echo/
 │   ├── __init__.py                         # Package init, __version__
-│   ├── __main__.py                         # python -m voice_copilot entry point
+│   ├── __main__.py                         # python -m echo entry point
 │   ├── cli.py                              # CLI: start/stop/status/install-hooks/uninstall
 │   ├── config.py                           # Paths, ports, env var handling
 │   ├── server/
@@ -109,12 +109,12 @@ voice-copilot/
 │   │   └── routes.py                       # POST /event, GET /health, GET /events (SSE)
 │   ├── interceptors/
 │   │   ├── __init__.py
-│   │   ├── hook_handler.py                 # Parse Claude Code hook JSON → VoiceCopilotEvent
+│   │   ├── hook_handler.py                 # Parse Claude Code hook JSON → EchoEvent
 │   │   ├── hook_installer.py               # Auto-install/uninstall hooks in settings.json
 │   │   └── transcript_watcher.py           # Watch JSONL transcripts for assistant messages
 │   ├── events/
 │   │   ├── __init__.py
-│   │   ├── types.py                        # Pydantic models (VoiceCopilotEvent, EventType, BlockReason)
+│   │   ├── types.py                        # Pydantic models (EchoEvent, EventType, BlockReason)
 │   │   └── event_bus.py                    # Async fan-out event bus (asyncio.Queue)
 │   └── hooks/
 │       ├── __init__.py
@@ -136,18 +136,18 @@ voice-copilot/
 
 ## Component Details
 
-### 1. Event Types (`voice_copilot/events/types.py`)
+### 1. Event Types (`echo/events/types.py`)
 
 Pydantic v2 models for the normalized event format:
 
 - `EventType` — 6-value string enum
 - `BlockReason` — 3-value string enum
-- `VoiceCopilotEvent` — Pydantic `BaseModel` with:
+- `EchoEvent` — Pydantic `BaseModel` with:
   - Required: `type`, `session_id`, `source` (literal "hook" | "transcript")
   - Auto-populated: `timestamp` (defaults to `time.time()`)
   - Optional per event type: `tool_name`, `tool_input`, `tool_output`, `block_reason`, `message`, `options`, `text`, `stop_reason`
 
-### 2. Event Bus (`voice_copilot/events/event_bus.py`)
+### 2. Event Bus (`echo/events/event_bus.py`)
 
 Async fan-out event bus using `asyncio.Queue`:
 
@@ -158,9 +158,9 @@ Async fan-out event bus using `asyncio.Queue`:
 - Full queues drop events with a warning log (never blocks the producer)
 - Default queue size: 256
 
-### 3. Hook Handler (`voice_copilot/interceptors/hook_handler.py`)
+### 3. Hook Handler (`echo/interceptors/hook_handler.py`)
 
-Parses raw Claude Code hook JSON into typed `VoiceCopilotEvent` instances:
+Parses raw Claude Code hook JSON into typed `EchoEvent` instances:
 
 - Routes by `hook_event_name` field to per-event parsers
 - Block reason inference: checks explicit `type` field first, then falls back to substring matching in message body
@@ -168,27 +168,27 @@ Parses raw Claude Code hook JSON into typed `VoiceCopilotEvent` instances:
 - All field extraction uses `.get()` with defaults — never raises `KeyError`
 - Entire dispatch wrapped in `try/except` — malformed payloads never crash the caller
 
-### 4. Hook Installer (`voice_copilot/interceptors/hook_installer.py`)
+### 4. Hook Installer (`echo/interceptors/hook_installer.py`)
 
-Manages Voice Copilot hooks in `~/.claude/settings.json`:
+Manages Echo hooks in `~/.claude/settings.json`:
 
-- `install_hooks()` — merges hooks (preserving existing user hooks), copies `on_event.sh` to `~/.voice-copilot/hooks/`
-- `uninstall_hooks()` — removes only Voice Copilot hooks (identified by command path), preserves all user hooks
+- `install_hooks()` — merges hooks (preserving existing user hooks), copies `on_event.sh` to `~/.echo-copilot/hooks/`
+- `uninstall_hooks()` — removes only Echo hooks (identified by command path), preserves all user hooks
 - `are_hooks_installed()` — checks current state
 - Creates backup (`settings.json.bak`) before any modification
 - Idempotent — running install twice doesn't duplicate hooks
 - Creates directories as needed, handles missing/empty settings files
 
-### 5. Hook Shell Script (`voice_copilot/hooks/on_event.sh`)
+### 5. Hook Shell Script (`echo/hooks/on_event.sh`)
 
 Bridge script that Claude Code's hook system executes:
 
-- Reads JSON from stdin, POSTs to `localhost:$VOICE_COPILOT_PORT/event`
+- Reads JSON from stdin, POSTs to `localhost:$ECHO_PORT/event`
 - Fails silently if server is not running (`|| true`, `exit 0`)
 - `--max-time 5` prevents hanging
 - No backgrounding — Claude Code's async flag handles timing at its level
 
-### 6. FastAPI Server (`voice_copilot/server/`)
+### 6. FastAPI Server (`echo/server/`)
 
 **app.py:**
 - Factory function `create_app()` with async lifespan
@@ -200,7 +200,7 @@ Bridge script that Claude Code's hook system executes:
 - `GET /health` — returns status, version, subscriber count
 - `GET /events` — SSE stream of all events (uses `sse-starlette`), with keep-alive pings every 15s
 
-### 7. Transcript Watcher (`voice_copilot/interceptors/transcript_watcher.py`)
+### 7. Transcript Watcher (`echo/interceptors/transcript_watcher.py`)
 
 Watches `~/.claude/projects/` recursively for `*.jsonl` files:
 
@@ -212,20 +212,20 @@ Watches `~/.claude/projects/` recursively for `*.jsonl` files:
 - Bridges watchdog's background thread to async event bus via `loop.call_soon_threadsafe()`
 - Handles: missing directory, file deletion, file truncation, permission errors, malformed JSONL
 
-### 8. CLI (`voice_copilot/cli.py`)
+### 8. CLI (`echo/cli.py`)
 
 Click-based CLI with 5 commands:
 
 | Command | Description |
 |---|---|
-| `voice-copilot start [--port] [--daemon] [--skip-hooks]` | Install hooks + start server |
-| `voice-copilot stop` | Stop background server (SIGTERM → SIGKILL fallback) |
-| `voice-copilot status` | Check if running + health endpoint |
-| `voice-copilot install-hooks` | Manually install hooks only |
-| `voice-copilot uninstall` | Stop server + remove all hooks |
+| `echo-copilot start [--port] [--daemon] [--skip-hooks]` | Install hooks + start server |
+| `echo-copilot stop` | Stop background server (SIGTERM → SIGKILL fallback) |
+| `echo-copilot status` | Check if running + health endpoint |
+| `echo-copilot install-hooks` | Manually install hooks only |
+| `echo-copilot uninstall` | Stop server + remove all hooks |
 
-- Daemon mode via `os.fork()` + `os.setsid()` with PID file at `~/.voice-copilot/server.pid`
-- Logs to `~/.voice-copilot/server.log` in daemon mode
+- Daemon mode via `os.fork()` + `os.setsid()` with PID file at `~/.echo-copilot/server.pid`
+- Logs to `~/.echo-copilot/server.log` in daemon mode
 - Port validation (1024-65535), already-running detection, stale PID cleanup
 
 ---
@@ -264,7 +264,7 @@ Click-based CLI with 5 commands:
 
 | Test File | Tests | Coverage |
 |---|---|---|
-| `test_event_types.py` | 25 | EventType enum, BlockReason enum, VoiceCopilotEvent model creation/serialization |
+| `test_event_types.py` | 25 | EventType enum, BlockReason enum, EchoEvent model creation/serialization |
 | `test_event_bus.py` | 14 | Subscribe, emit fan-out, unsubscribe, queue-full drop behavior |
 | `test_hook_handler.py` | 21 | Each hook event type, block reason inference, edge cases (missing fields, unknown events) |
 | `test_hook_installer.py` | 13 | Install (create/merge/idempotent), uninstall (selective removal), backup creation |
