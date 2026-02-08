@@ -5,6 +5,7 @@ import asyncio
 import numpy as np
 import pytest
 
+from echo.events.types import BlockReason
 from echo.tts.audio_player import AudioPlayer
 
 
@@ -90,9 +91,10 @@ class TestStartup:
     async def test_alert_tone_cached_on_start(self):
         player = AudioPlayer()
         await player.start()
-        assert player._alert_tone is not None
-        assert isinstance(player._alert_tone, np.ndarray)
-        assert player._alert_tone.dtype == np.float32
+        assert len(player._alert_tones) > 0
+        for tone_bytes in player._alert_tones.values():
+            assert isinstance(tone_bytes, bytes)
+            assert len(tone_bytes) > 0
         await player.stop()
 
 
@@ -313,6 +315,100 @@ class TestPlayback:
         # Give the worker time to pick up and process the item
         await asyncio.sleep(0.1)
         assert player.queue_depth == 0
+        await player.stop()
+
+
+# ---------------------------------------------------------------------------
+# Per-reason alert tones
+# ---------------------------------------------------------------------------
+
+class TestPerReasonAlertTones:
+
+    async def test_play_alert_permission_prompt(self, monkeypatch):
+        play_calls = []
+        monkeypatch.setattr("echo.tts.audio_player.sd.query_devices", _mock_query_devices_success)
+        monkeypatch.setattr(
+            "echo.tts.audio_player.sd.play",
+            lambda data, samplerate: play_calls.append((data, samplerate)),
+        )
+        monkeypatch.setattr("echo.tts.audio_player.sd.wait", _noop)
+        monkeypatch.setattr("echo.tts.audio_player.sd.stop", _noop)
+
+        player = AudioPlayer()
+        await player.start()
+        await player.play_alert(BlockReason.PERMISSION_PROMPT)
+        assert len(play_calls) == 1
+        played_data, sr = play_calls[0]
+        assert played_data.dtype == np.float32
+        assert len(played_data) > 0
+        assert sr == 16000
+        await player.stop()
+
+    async def test_play_alert_question(self, monkeypatch):
+        play_calls = []
+        monkeypatch.setattr("echo.tts.audio_player.sd.query_devices", _mock_query_devices_success)
+        monkeypatch.setattr(
+            "echo.tts.audio_player.sd.play",
+            lambda data, samplerate: play_calls.append((data, samplerate)),
+        )
+        monkeypatch.setattr("echo.tts.audio_player.sd.wait", _noop)
+        monkeypatch.setattr("echo.tts.audio_player.sd.stop", _noop)
+
+        player = AudioPlayer()
+        await player.start()
+        await player.play_alert(BlockReason.QUESTION)
+        assert len(play_calls) == 1
+        played_data, _ = play_calls[0]
+        assert played_data.dtype == np.float32
+        assert len(played_data) > 0
+        await player.stop()
+
+    async def test_play_alert_none_default(self, monkeypatch):
+        play_calls = []
+        monkeypatch.setattr("echo.tts.audio_player.sd.query_devices", _mock_query_devices_success)
+        monkeypatch.setattr(
+            "echo.tts.audio_player.sd.play",
+            lambda data, samplerate: play_calls.append((data, samplerate)),
+        )
+        monkeypatch.setattr("echo.tts.audio_player.sd.wait", _noop)
+        monkeypatch.setattr("echo.tts.audio_player.sd.stop", _noop)
+
+        player = AudioPlayer()
+        await player.start()
+        # Call with no arguments — should use default (None) tone
+        await player.play_alert()
+        assert len(play_calls) == 1
+        played_data, _ = play_calls[0]
+        assert played_data.dtype == np.float32
+        assert len(played_data) > 0
+        await player.stop()
+
+    @pytest.mark.usefixtures("_patch_sd")
+    async def test_play_alert_different_reasons_different_bytes(self):
+        player = AudioPlayer()
+        await player.start()
+        # Permission tone is longer (~0.60s) than question tone (~0.35s)
+        perm_bytes = player._alert_tones[BlockReason.PERMISSION_PROMPT]
+        question_bytes = player._alert_tones[BlockReason.QUESTION]
+        default_bytes = player._alert_tones[None]
+        idle_bytes = player._alert_tones[BlockReason.IDLE_PROMPT]
+        # Permission is the longest (7 segments ~0.60s vs 3 segments ~0.35s)
+        assert len(perm_bytes) > len(question_bytes)
+        # Each reason produces distinct byte content
+        assert perm_bytes != question_bytes
+        assert perm_bytes != default_bytes
+        assert question_bytes != idle_bytes
+        await player.stop()
+
+    @pytest.mark.usefixtures("_patch_sd")
+    async def test_alert_tones_cached_at_startup(self):
+        player = AudioPlayer()
+        await player.start()
+        assert len(player._alert_tones) == 4
+        assert None in player._alert_tones
+        assert BlockReason.PERMISSION_PROMPT in player._alert_tones
+        assert BlockReason.QUESTION in player._alert_tones
+        assert BlockReason.IDLE_PROMPT in player._alert_tones
         await player.stop()
 
 

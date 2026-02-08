@@ -64,6 +64,7 @@ class TemplateEngine:
             summarization_method=SummarizationMethod.TEMPLATE,
             session_id=event.session_id,
             source_event_id=event.event_id,
+            block_reason=event.block_reason,
         )
 
     def render_batch(self, events: list[EchoEvent]) -> NarrationEvent:
@@ -175,17 +176,23 @@ class TemplateEngine:
         message = event.message
 
         if reason == BlockReason.PERMISSION_PROMPT:
-            base = f"The agent needs permission. {message}" if message else "The agent needs permission."
+            base = "The agent needs your permission and is waiting for your answer."
+            if message:
+                base += f" It's asking: {message}"
         elif reason == BlockReason.IDLE_PROMPT:
-            base = "The agent is waiting for your input."
+            base = "The agent is idle and waiting for your input."
         elif reason == BlockReason.QUESTION:
-            base = f"The agent has a question. {message}" if message else "The agent has a question."
+            base = "The agent has a question and is waiting for your answer."
+            if message:
+                base += f" It's asking: {message}"
         else:
-            base = "The agent is blocked and needs attention."
+            base = "The agent is blocked and needs your attention."
+            if message:
+                base += f" {message}"
 
         # Append options if present.
         if event.options:
-            base += " " + self._format_options(event.options)
+            base += " " + self._format_options_numbered(event.options)
 
         return base
 
@@ -224,6 +231,22 @@ class TemplateEngine:
         # 3 or more -- Oxford comma with "or" before the last.
         head = ", ".join(options[:-1])
         return f"Options are: {head}, or {options[-1]}."
+
+    @staticmethod
+    def _format_options_numbered(options: list[str]) -> str:
+        """Format options as numbered list for TTS readability.
+
+        Example: "Option one: RS256. Option two: HS256."
+        """
+        _ORDINALS = [
+            "one", "two", "three", "four", "five",
+            "six", "seven", "eight", "nine", "ten",
+        ]
+        parts = []
+        for i, opt in enumerate(options):
+            ordinal = _ORDINALS[i] if i < len(_ORDINALS) else str(i + 1)
+            parts.append(f"Option {ordinal}: {opt}.")
+        return " ".join(parts)
 
     @staticmethod
     def _batch_noun(tool_name: str, count: int) -> str:

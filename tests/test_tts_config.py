@@ -154,3 +154,30 @@ class TestTTSConfigEnvOverrides:
         monkeypatch.setenv("ECHO_AUDIO_BACKLOG_THRESHOLD", "5")
         cfg = _reload_config()
         assert cfg.AUDIO_BACKLOG_THRESHOLD == 5
+
+    def test_alert_repeat_interval_from_env(self, monkeypatch):
+        monkeypatch.setenv("ECHO_ALERT_REPEAT_INTERVAL", "15.0")
+        cfg = _reload_config()
+        assert cfg.ALERT_REPEAT_INTERVAL == 15.0
+
+    def test_alert_max_repeats_from_env(self, monkeypatch):
+        monkeypatch.setenv("ECHO_ALERT_MAX_REPEATS", "10")
+        cfg = _reload_config()
+        assert cfg.ALERT_MAX_REPEATS == 10
+
+
+# ---------------------------------------------------------------------------
+# Alert configuration defaults
+# ---------------------------------------------------------------------------
+
+
+class TestAlertConfigDefaults:
+    """Verify that alert config constants exist with the correct defaults."""
+
+    def test_alert_repeat_interval_default(self):
+        cfg = _reload_config()
+        assert cfg.ALERT_REPEAT_INTERVAL == 30.0
+
+    def test_alert_max_repeats_default(self):
+        cfg = _reload_config()
+        assert cfg.ALERT_MAX_REPEATS == 5

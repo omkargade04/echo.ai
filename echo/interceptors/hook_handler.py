@@ -94,6 +94,7 @@ def _parse_notification(raw: dict, session_id: str) -> EchoEvent:
     """
     notification_type: str = raw.get("type", "")
     message: str | None = raw.get("message")
+    options: list[str] | None = raw.get("options")
 
     block_reason = _infer_block_reason(notification_type, message)
 
@@ -109,6 +110,7 @@ def _parse_notification(raw: dict, session_id: str) -> EchoEvent:
         source="hook",
         block_reason=block_reason,
         message=message,
+        options=options,
     )
 
 

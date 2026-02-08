@@ -187,7 +187,10 @@ class TestAgentBlockedTemplates:
             message="Allow running rm -rf?",
         )
         result = engine.render(event)
-        assert result.text == "The agent needs permission. Allow running rm -rf?"
+        assert result.text == (
+            "The agent needs your permission and is waiting for your answer."
+            " It's asking: Allow running rm -rf?"
+        )
 
     def test_permission_prompt_without_message(self, engine: TemplateEngine):
         event = _make_event(
@@ -196,7 +199,7 @@ class TestAgentBlockedTemplates:
             message=None,
         )
         result = engine.render(event)
-        assert result.text == "The agent needs permission."
+        assert result.text == "The agent needs your permission and is waiting for your answer."
 
     def test_idle_prompt(self, engine: TemplateEngine):
         event = _make_event(
@@ -204,7 +207,7 @@ class TestAgentBlockedTemplates:
             block_reason=BlockReason.IDLE_PROMPT,
         )
         result = engine.render(event)
-        assert result.text == "The agent is waiting for your input."
+        assert result.text == "The agent is idle and waiting for your input."
 
     def test_question_with_message(self, engine: TemplateEngine):
         event = _make_event(
@@ -213,7 +216,10 @@ class TestAgentBlockedTemplates:
             message="Which database do you want?",
         )
         result = engine.render(event)
-        assert result.text == "The agent has a question. Which database do you want?"
+        assert result.text == (
+            "The agent has a question and is waiting for your answer."
+            " It's asking: Which database do you want?"
+        )
 
     def test_question_without_message(self, engine: TemplateEngine):
         event = _make_event(
@@ -222,7 +228,7 @@ class TestAgentBlockedTemplates:
             message=None,
         )
         result = engine.render(event)
-        assert result.text == "The agent has a question."
+        assert result.text == "The agent has a question and is waiting for your answer."
 
     def test_unknown_block_reason(self, engine: TemplateEngine):
         event = _make_event(
@@ -230,7 +236,7 @@ class TestAgentBlockedTemplates:
             block_reason=None,
         )
         result = engine.render(event)
-        assert result.text == "The agent is blocked and needs attention."
+        assert result.text == "The agent is blocked and needs your attention."
 
 
 # ---------------------------------------------------------------------------
@@ -239,9 +245,9 @@ class TestAgentBlockedTemplates:
 
 
 class TestAgentBlockedOptions:
-    """Options list should be formatted naturally in narration."""
+    """Options list should be formatted as numbered list for TTS readability."""
 
-    def test_two_options_uses_and(self, engine: TemplateEngine):
+    def test_two_options_numbered(self, engine: TemplateEngine):
         event = _make_event(
             type=EventType.AGENT_BLOCKED,
             block_reason=BlockReason.PERMISSION_PROMPT,
@@ -249,9 +255,13 @@ class TestAgentBlockedOptions:
             options=["yes", "no"],
         )
         result = engine.render(event)
-        assert result.text == "The agent needs permission. Allow? Options are: yes and no."
+        assert result.text == (
+            "The agent needs your permission and is waiting for your answer."
+            " It's asking: Allow?"
+            " Option one: yes. Option two: no."
+        )
 
-    def test_three_options_uses_oxford_comma_and_or(self, engine: TemplateEngine):
+    def test_three_options_numbered(self, engine: TemplateEngine):
         event = _make_event(
             type=EventType.AGENT_BLOCKED,
             block_reason=BlockReason.QUESTION,
@@ -259,9 +269,13 @@ class TestAgentBlockedOptions:
             options=["red", "green", "blue"],
         )
         result = engine.render(event)
-        assert result.text == "The agent has a question. Pick a color. Options are: red, green, or blue."
+        assert result.text == (
+            "The agent has a question and is waiting for your answer."
+            " It's asking: Pick a color."
+            " Option one: red. Option two: green. Option three: blue."
+        )
 
-    def test_four_options(self, engine: TemplateEngine):
+    def test_four_options_numbered(self, engine: TemplateEngine):
         event = _make_event(
             type=EventType.AGENT_BLOCKED,
             block_reason=BlockReason.QUESTION,
@@ -269,16 +283,23 @@ class TestAgentBlockedOptions:
             options=["a", "b", "c", "d"],
         )
         result = engine.render(event)
-        assert result.text == "The agent has a question. Choose. Options are: a, b, c, or d."
+        assert result.text == (
+            "The agent has a question and is waiting for your answer."
+            " It's asking: Choose."
+            " Option one: a. Option two: b. Option three: c. Option four: d."
+        )
 
-    def test_single_option(self, engine: TemplateEngine):
+    def test_single_option_numbered(self, engine: TemplateEngine):
         event = _make_event(
             type=EventType.AGENT_BLOCKED,
             block_reason=BlockReason.IDLE_PROMPT,
             options=["continue"],
         )
         result = engine.render(event)
-        assert result.text == "The agent is waiting for your input. Options are: continue."
+        assert result.text == (
+            "The agent is idle and waiting for your input."
+            " Option one: continue."
+        )
 
     def test_empty_options_list_not_appended(self, engine: TemplateEngine):
         event = _make_event(
@@ -287,7 +308,7 @@ class TestAgentBlockedOptions:
             options=[],
         )
         result = engine.render(event)
-        assert result.text == "The agent is waiting for your input."
+        assert result.text == "The agent is idle and waiting for your input."
 
 
 # ---------------------------------------------------------------------------
@@ -439,3 +460,145 @@ class TestSummarizationMethod:
         events = [_make_event(tool_name="Read", tool_input={"file_path": "/x.py"})]
         result = engine.render_batch(events)
         assert result.summarization_method == SummarizationMethod.TEMPLATE
+
+
+# ---------------------------------------------------------------------------
+# Enhanced blocked templates (PRD-style narration)
+# ---------------------------------------------------------------------------
+
+
+class TestEnhancedBlockedTemplates:
+    """Enhanced blocked-event templates with richer TTS-friendly narration."""
+
+    def test_permission_prompt_enhanced_text(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+        )
+        result = engine.render(event)
+        assert result.text.startswith(
+            "The agent needs your permission and is waiting for your answer."
+        )
+
+    def test_permission_prompt_with_message_appends_asking(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+            message="Allow file write?",
+        )
+        result = engine.render(event)
+        assert "It's asking: Allow file write?" in result.text
+
+    def test_question_enhanced_text(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.QUESTION,
+        )
+        result = engine.render(event)
+        assert result.text.startswith(
+            "The agent has a question and is waiting for your answer."
+        )
+
+    def test_question_with_message_appends_asking(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.QUESTION,
+            message="Which branch?",
+        )
+        result = engine.render(event)
+        assert "It's asking: Which branch?" in result.text
+
+    def test_idle_enhanced_text(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.IDLE_PROMPT,
+        )
+        result = engine.render(event)
+        assert result.text == "The agent is idle and waiting for your input."
+
+    def test_blocked_no_reason_enhanced(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=None,
+        )
+        result = engine.render(event)
+        assert result.text == "The agent is blocked and needs your attention."
+
+    def test_blocked_no_reason_with_message(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=None,
+            message="Something unexpected happened.",
+        )
+        result = engine.render(event)
+        assert result.text == (
+            "The agent is blocked and needs your attention."
+            " Something unexpected happened."
+        )
+
+
+# ---------------------------------------------------------------------------
+# _format_options_numbered
+# ---------------------------------------------------------------------------
+
+
+class TestFormatOptionsNumbered:
+    """Tests for the _format_options_numbered static method."""
+
+    def test_format_options_numbered_two(self, engine: TemplateEngine):
+        result = TemplateEngine._format_options_numbered(["RS256", "HS256"])
+        assert result == "Option one: RS256. Option two: HS256."
+
+    def test_format_options_numbered_three(self, engine: TemplateEngine):
+        result = TemplateEngine._format_options_numbered(["a", "b", "c"])
+        assert result == "Option one: a. Option two: b. Option three: c."
+
+    def test_format_options_numbered_single(self, engine: TemplateEngine):
+        result = TemplateEngine._format_options_numbered(["yes"])
+        assert result == "Option one: yes."
+
+    def test_format_options_numbered_over_ten(self, engine: TemplateEngine):
+        options = [f"opt{i}" for i in range(1, 12)]  # 11 options
+        result = TemplateEngine._format_options_numbered(options)
+        # First 10 use ordinals, 11th uses numeric
+        assert "Option ten: opt10." in result
+        assert "Option 11: opt11." in result
+
+
+# ---------------------------------------------------------------------------
+# block_reason passthrough to NarrationEvent
+# ---------------------------------------------------------------------------
+
+
+class TestBlockReasonPassthrough:
+    """Tests verifying block_reason flows from EchoEvent to NarrationEvent."""
+
+    def test_block_reason_passed_to_narration_event(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+            message="Allow?",
+        )
+        result = engine.render(event)
+        assert result.block_reason == BlockReason.PERMISSION_PROMPT
+
+    def test_block_reason_none_for_tool_executed(self, engine: TemplateEngine):
+        event = _make_event(
+            tool_name="Read",
+            tool_input={"file_path": "/a.py"},
+        )
+        result = engine.render(event)
+        assert result.block_reason is None
+
+    def test_block_reason_none_for_session_start(self, engine: TemplateEngine):
+        event = _make_event(type=EventType.SESSION_START)
+        result = engine.render(event)
+        assert result.block_reason is None
+
+    def test_block_reason_question_passed_through(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.QUESTION,
+        )
+        result = engine.render(event)
+        assert result.block_reason == BlockReason.QUESTION

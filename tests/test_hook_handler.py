@@ -148,6 +148,92 @@ class TestParseNotification:
 
 
 # ---------------------------------------------------------------------------
+# Notification options parsing
+# ---------------------------------------------------------------------------
+
+
+class TestNotificationOptions:
+    """Notification hook payloads should propagate the options field."""
+
+    def test_notification_with_options_list(self):
+        raw = {
+            "hook_event_name": "Notification",
+            "session_id": "sess-860",
+            "type": "question",
+            "message": "Choose one",
+            "options": ["yes", "no"],
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.options == ["yes", "no"]
+
+    def test_notification_with_empty_options(self):
+        raw = {
+            "hook_event_name": "Notification",
+            "session_id": "sess-861",
+            "type": "question",
+            "message": "Choose one",
+            "options": [],
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.options == []
+
+    def test_notification_without_options_key(self):
+        raw = {
+            "hook_event_name": "Notification",
+            "session_id": "sess-862",
+            "type": "question",
+            "message": "Choose one",
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.options is None
+
+    def test_notification_options_with_permission_prompt(self):
+        raw = {
+            "hook_event_name": "Notification",
+            "session_id": "sess-863",
+            "type": "permission_prompt",
+            "message": "Allow?",
+            "options": ["yes", "no"],
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.type == EventType.AGENT_BLOCKED
+        assert event.block_reason == BlockReason.PERMISSION_PROMPT
+        assert event.message == "Allow?"
+        assert event.options == ["yes", "no"]
+
+    def test_notification_options_with_question(self):
+        raw = {
+            "hook_event_name": "Notification",
+            "session_id": "sess-864",
+            "type": "question",
+            "message": "Which DB?",
+            "options": ["PostgreSQL", "MongoDB", "MySQL"],
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.type == EventType.AGENT_BLOCKED
+        assert event.block_reason == BlockReason.QUESTION
+        assert event.message == "Which DB?"
+        assert event.options == ["PostgreSQL", "MongoDB", "MySQL"]
+
+    def test_notification_options_single_item(self):
+        raw = {
+            "hook_event_name": "Notification",
+            "session_id": "sess-865",
+            "type": "question",
+            "message": "Continue?",
+            "options": ["continue"],
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.options == ["continue"]
+
+
+# ---------------------------------------------------------------------------
 # Stop -> agent_stopped
 # ---------------------------------------------------------------------------
 

@@ -60,11 +60,12 @@ def summarizer(event_bus: EventBus, narration_bus: EventBus) -> Summarizer:
 
 
 @pytest.fixture
-def tts_engine(narration_bus: EventBus) -> TTSEngine:
+def tts_engine(event_bus: EventBus, narration_bus: EventBus) -> TTSEngine:
     """Return a TTSEngine with all sub-components mocked to avoid real I/O.
 
-    ElevenLabsClient, AudioPlayer, and LiveKitPublisher are patched so no
-    HTTP calls, audio device access, or LiveKit SDK calls occur.
+    ElevenLabsClient, AudioPlayer, LiveKitPublisher, and AlertManager are
+    patched so no HTTP calls, audio device access, LiveKit SDK calls, or
+    background alert tasks occur.
     """
     with patch(
         "echo.tts.tts_engine.ElevenLabsClient.start",
@@ -96,8 +97,14 @@ def tts_engine(narration_bus: EventBus) -> TTSEngine:
         "echo.tts.tts_engine.LiveKitPublisher.is_connected",
         new_callable=PropertyMock,
         return_value=False,
+    ), patch(
+        "echo.tts.tts_engine.AlertManager.start",
+        new_callable=AsyncMock,
+    ), patch(
+        "echo.tts.tts_engine.AlertManager.stop",
+        new_callable=AsyncMock,
     ):
-        engine = TTSEngine(narration_bus=narration_bus)
+        engine = TTSEngine(narration_bus=narration_bus, event_bus=event_bus)
         yield engine
 
 
