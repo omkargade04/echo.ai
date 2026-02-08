@@ -70,3 +70,21 @@ ALERT_REPEAT_INTERVAL: float = float(
 ALERT_MAX_REPEATS: int = int(
     os.environ.get("ECHO_ALERT_MAX_REPEATS", "5")
 )  # Maximum number of repeat alerts before stopping.
+
+
+# --- STT / Speech-to-Text configuration ---
+
+STT_API_KEY: str = os.environ.get("ECHO_STT_API_KEY", "")
+STT_BASE_URL: str = os.environ.get("ECHO_STT_BASE_URL", "https://api.openai.com")
+STT_MODEL: str = os.environ.get("ECHO_STT_MODEL", "whisper-1")
+STT_TIMEOUT: float = float(os.environ.get("ECHO_STT_TIMEOUT", "10.0"))
+STT_LISTEN_TIMEOUT: float = float(os.environ.get("ECHO_STT_LISTEN_TIMEOUT", "30.0"))
+STT_SILENCE_THRESHOLD: float = float(os.environ.get("ECHO_STT_SILENCE_THRESHOLD", "0.01"))
+STT_SILENCE_DURATION: float = float(os.environ.get("ECHO_STT_SILENCE_DURATION", "1.5"))
+STT_MAX_RECORD_DURATION: float = float(os.environ.get("ECHO_STT_MAX_RECORD_DURATION", "15.0"))
+STT_CONFIDENCE_THRESHOLD: float = float(os.environ.get("ECHO_STT_CONFIDENCE_THRESHOLD", "0.6"))
+STT_HEALTH_CHECK_INTERVAL: float = float(os.environ.get("ECHO_STT_HEALTH_CHECK_INTERVAL", "60.0"))
+
+# --- Response dispatch configuration ---
+
+DISPATCH_METHOD: str = os.environ.get("ECHO_DISPATCH_METHOD", "")

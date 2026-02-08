@@ -78,6 +78,32 @@ class TestActiveAlert:
         assert alert.repeat_task is None
         assert alert.created_at > 0
 
+    def test_active_alert_stores_options(self):
+        alert = ActiveAlert(
+            session_id="s1",
+            block_reason=BlockReason.QUESTION,
+            narration_text="Which option?",
+            options=["RS256", "HS256"],
+        )
+        assert alert.options == ["RS256", "HS256"]
+
+    def test_active_alert_options_default_none(self):
+        alert = ActiveAlert(
+            session_id="s1",
+            block_reason=None,
+            narration_text="Blocked.",
+        )
+        assert alert.options is None
+
+    def test_active_alert_options_empty_list(self):
+        alert = ActiveAlert(
+            session_id="s1",
+            block_reason=BlockReason.IDLE_PROMPT,
+            narration_text="Idle.",
+            options=[],
+        )
+        assert alert.options == []
+
 
 # ---------------------------------------------------------------------------
 # Lifecycle tests
@@ -226,6 +252,41 @@ class TestAlertActivation:
         alert = alert_manager.get_active_alert(_SESSION)
         assert alert.block_reason == BlockReason.IDLE_PROMPT
         assert alert.narration_text == "Now idle"
+
+        await alert_manager.stop()
+
+    async def test_activate_stores_options(
+        self, alert_manager: AlertManager, monkeypatch
+    ):
+        monkeypatch.setattr("echo.tts.alert_manager.ALERT_REPEAT_INTERVAL", 0)
+        await alert_manager.start()
+
+        await alert_manager.activate(
+            _SESSION,
+            BlockReason.QUESTION,
+            "Which branch?",
+            options=["main", "develop"],
+        )
+        alert = alert_manager.get_active_alert(_SESSION)
+        assert alert is not None
+        assert alert.options == ["main", "develop"]
+
+        await alert_manager.stop()
+
+    async def test_activate_options_default_none(
+        self, alert_manager: AlertManager, monkeypatch
+    ):
+        monkeypatch.setattr("echo.tts.alert_manager.ALERT_REPEAT_INTERVAL", 0)
+        await alert_manager.start()
+
+        await alert_manager.activate(
+            _SESSION,
+            BlockReason.PERMISSION_PROMPT,
+            "Allow write?",
+        )
+        alert = alert_manager.get_active_alert(_SESSION)
+        assert alert is not None
+        assert alert.options is None
 
         await alert_manager.stop()
 

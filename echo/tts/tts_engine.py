@@ -166,6 +166,7 @@ class TTSEngine:
                 session_id=narration.session_id,
                 block_reason=narration.block_reason,
                 narration_text=narration.text,
+                options=narration.options,
             )
 
         logger.info("CRITICAL narration: %s", narration.text[:80])

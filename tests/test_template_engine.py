@@ -602,3 +602,40 @@ class TestBlockReasonPassthrough:
         )
         result = engine.render(event)
         assert result.block_reason == BlockReason.QUESTION
+
+
+# ---------------------------------------------------------------------------
+# options passthrough to NarrationEvent
+# ---------------------------------------------------------------------------
+
+
+class TestOptionsPassthrough:
+    """Tests verifying options flow from EchoEvent to NarrationEvent."""
+
+    def test_options_passed_through_render(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.PERMISSION_PROMPT,
+            message="Allow?",
+            options=["RS256", "HS256"],
+        )
+        result = engine.render(event)
+        assert result.options == ["RS256", "HS256"]
+
+    def test_options_none_when_not_set(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.TOOL_EXECUTED,
+            tool_name="Read",
+            tool_input={"file_path": "/a.py"},
+        )
+        result = engine.render(event)
+        assert result.options is None
+
+    def test_options_empty_list_passed_through(self, engine: TemplateEngine):
+        event = _make_event(
+            type=EventType.AGENT_BLOCKED,
+            block_reason=BlockReason.QUESTION,
+            options=[],
+        )
+        result = engine.render(event)
+        assert result.options == []

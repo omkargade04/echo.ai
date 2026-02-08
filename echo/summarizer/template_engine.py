@@ -65,6 +65,7 @@ class TemplateEngine:
             session_id=event.session_id,
             source_event_id=event.event_id,
             block_reason=event.block_reason,
+            options=event.options,
         )
 
     def render_batch(self, events: list[EchoEvent]) -> NarrationEvent:

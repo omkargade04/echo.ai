@@ -52,3 +52,4 @@ class NarrationEvent(BaseModel):
     timestamp: float = Field(default_factory=time.time)
     source_event_id: str | None = None
     block_reason: BlockReason | None = None
+    options: list[str] | None = None
