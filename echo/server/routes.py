@@ -158,7 +158,7 @@ async def event_stream(request: Request) -> EventSourceResponse:
     """
     event_bus = _get_event_bus(request)
 
-    async def _generate() -> None:
+    async def _generate():
         """Async generator that yields SSE-formatted event dicts."""
         queue = await event_bus.subscribe()
         try:
