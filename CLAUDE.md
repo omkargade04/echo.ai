@@ -6,7 +6,7 @@ Instructions for AI assistants working on this codebase.
 
 Echo is a real-time audio bridge between developers and AI coding agents (Claude Code for MVP). It captures events from the agent, summarizes them into concise narration text, converts that to speech, and allows the developer to respond verbally — all without watching the screen.
 
-**Current state:** All 5 stages complete (775 tests). The full pipeline is operational: intercept → summarize → speak → alert → voice response.
+**Current state:** All 5 stages complete (865 tests). The full pipeline is operational: intercept → summarize → speak → alert → voice response.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ Five-stage pipeline, all stages implemented:
 ```
 Stage 1: Intercept     → Claude Code hooks + transcript watcher → EventBus
 Stage 2: Summarize     → EventBus → Summarizer → NarrationBus
-Stage 3: TTS           → NarrationBus → ElevenLabs + sounddevice + LiveKit
+Stage 3: TTS           → NarrationBus → TTSProvider (ElevenLabs/Inworld) + sounddevice + LiveKit
 Stage 4: Alert         → Differentiated tones per block reason + repeat alerts
 Stage 5: Voice Response → Microphone → Whisper STT → ResponseMatcher → keystroke dispatch
 ```
@@ -76,13 +76,16 @@ The server is a FastAPI app running on `localhost:7865`. Events flow through thr
 
 ### `echo/tts/`
 - `types.py` — `TTSState` enum (active/degraded/disabled)
-- `elevenlabs_client.py` — ElevenLabs HTTP client for speech synthesis
+- `provider.py` — `TTSProvider` abstract base class (start, stop, synthesize, is_available, provider_name)
+- `provider_factory.py` — `create_tts_provider()` factory, selects provider via `ECHO_TTS_PROVIDER` env var
+- `elevenlabs_client.py` — ElevenLabs HTTP client for speech synthesis (implements `TTSProvider`)
+- `inworld_client.py` — Inworld HTTP client for speech synthesis (implements `TTSProvider`)
 - `audio_player.py` — Priority-queued local audio playback via sounddevice, block-reason tone caching
 - `alert_tone.py` — Programmatic two-tone alert generation (numpy), shared sine/fade primitives
 - `alert_tones.py` — Per-block-reason alert tone generation (permission, question, idle, default)
 - `alert_manager.py` — Alert state tracking, repeat timers, EventBus subscription for resolution (options passthrough)
 - `livekit_publisher.py` — LiveKit Cloud room audio publishing
-- `tts_engine.py` — Core orchestrator: subscribes to NarrationBus, routes by priority, AlertManager integration (options passthrough)
+- `tts_engine.py` — Core orchestrator: subscribes to NarrationBus, routes by priority, uses TTSProvider via factory
 
 ### `echo/stt/`
 - `types.py` — `STTState` (4 values), `MatchMethod` (5 values), `MatchResult`, `ResponseEvent`
@@ -101,7 +104,7 @@ The server is a FastAPI app running on `localhost:7865`. Events flow through thr
 
 ### Root
 - `cli.py` — Click CLI: `start` (with `--no-tts`, `--no-stt` flags), `stop`, `status`, `install-hooks`, `uninstall`
-- `config.py` — Paths, ports, Ollama, ElevenLabs, LiveKit, audio, STT configuration (all env-var overridable)
+- `config.py` — Paths, ports, Ollama, TTS provider selection, ElevenLabs, Inworld, LiveKit, audio, STT configuration (all env-var overridable)
 
 ## Event Flow
 
@@ -124,7 +127,7 @@ Claude Code hook fires
                          + play_immediate + AlertManager.activate()
                 NORMAL  → synthesize + enqueue
                 LOW     → check backlog, synthesize + enqueue (or skip)
-              → ElevenLabsClient.synthesize() → PCM bytes
+              → TTSProvider.synthesize() → PCM bytes
               → AudioPlayer (speakers) + LiveKitPublisher (room)
         → [Subscriber 2] AlertManager._consume_loop()
           → Non-blocked event for active session → clear alert, cancel repeat timer
@@ -149,11 +152,19 @@ Claude Code hook fires
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
 | `ECHO_LLM_MODEL` | `qwen2.5:0.5b` | Ollama model |
 | `ECHO_LLM_TIMEOUT` | `5.0` | Ollama request timeout (sec) |
+| `ECHO_TTS_PROVIDER` | `elevenlabs` | TTS provider: `elevenlabs` or `inworld` |
 | `ECHO_ELEVENLABS_API_KEY` | `""` (empty = TTS disabled) | ElevenLabs API key |
 | `ECHO_ELEVENLABS_BASE_URL` | `https://api.elevenlabs.io` | ElevenLabs API base URL |
 | `ECHO_TTS_VOICE_ID` | `21m00Tcm4TlvDq8ikWAM` | ElevenLabs voice ID (Rachel) |
 | `ECHO_TTS_MODEL` | `eleven_turbo_v2_5` | ElevenLabs model |
 | `ECHO_TTS_TIMEOUT` | `10.0` | ElevenLabs request timeout (sec) |
+| `ECHO_INWORLD_API_KEY` | `""` (empty = disabled) | Inworld API key |
+| `ECHO_INWORLD_BASE_URL` | `https://api.inworld.ai` | Inworld API base URL |
+| `ECHO_INWORLD_VOICE_ID` | `Ashley` | Inworld voice name |
+| `ECHO_INWORLD_MODEL` | `inworld-tts-1.5-max` | Inworld model ID |
+| `ECHO_INWORLD_TIMEOUT` | `10.0` | Inworld request timeout (sec) |
+| `ECHO_INWORLD_TEMPERATURE` | `1.1` | Voice expressiveness (0.6-1.1) |
+| `ECHO_INWORLD_SPEAKING_RATE` | `1.0` | Speed multiplier (0.5-1.5) |
 | `LIVEKIT_URL` | `""` (empty = disabled) | LiveKit Cloud server URL |
 | `LIVEKIT_API_KEY` | `""` | LiveKit API key |
 | `LIVEKIT_API_SECRET` | `""` | LiveKit API secret |
@@ -190,7 +201,7 @@ Dev: `pytest`, `pytest-asyncio`, `httpx`
 ## Common Tasks
 
 ```bash
-# Run all tests (775 tests)
+# Run all tests (865 tests)
 pytest
 
 # Run tests for a specific stage

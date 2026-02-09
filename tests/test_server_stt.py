@@ -128,9 +128,14 @@ class TestHealthSTTFields:
              _p("echo.summarizer.llm_summarizer.LLMSummarizer.is_available", new_callable=_PM, return_value=False):
             _sum = _S(event_bus=_eb, narration_bus=_nb)
 
-        with _p("echo.tts.tts_engine.ElevenLabsClient.start", new_callable=_AM), \
-             _p("echo.tts.tts_engine.ElevenLabsClient.stop", new_callable=_AM), \
-             _p("echo.tts.tts_engine.ElevenLabsClient.is_available", new_callable=_PM, return_value=False), \
+        _mock_prov = _AM()
+        _mock_prov.is_available = False
+        _mock_prov.provider_name = "mock"
+        _mock_prov.start = _AM()
+        _mock_prov.stop = _AM()
+        _mock_prov.synthesize = _AM(return_value=None)
+
+        with _p("echo.tts.tts_engine.create_tts_provider", return_value=_mock_prov), \
              _p("echo.tts.tts_engine.AudioPlayer.start", new_callable=_AM), \
              _p("echo.tts.tts_engine.AudioPlayer.stop", new_callable=_AM), \
              _p("echo.tts.tts_engine.AudioPlayer.is_available", new_callable=_PM, return_value=False), \

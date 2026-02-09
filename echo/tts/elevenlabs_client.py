@@ -10,6 +10,7 @@ import time
 
 import httpx
 
+from echo.tts.provider import TTSProvider
 from echo.config import (
     ELEVENLABS_API_KEY,
     ELEVENLABS_BASE_URL,
@@ -22,8 +23,12 @@ from echo.config import (
 logger = logging.getLogger(__name__)
 
 
-class ElevenLabsClient:
+class ElevenLabsClient(TTSProvider):
     """ElevenLabs TTS HTTP client with health checking and graceful degradation."""
+
+    @property
+    def provider_name(self) -> str:
+        return "elevenlabs"
 
     def __init__(self) -> None:
         self._available: bool = False

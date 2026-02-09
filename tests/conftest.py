@@ -70,20 +70,20 @@ def summarizer(event_bus: EventBus, narration_bus: EventBus) -> Summarizer:
 def tts_engine(event_bus: EventBus, narration_bus: EventBus) -> TTSEngine:
     """Return a TTSEngine with all sub-components mocked to avoid real I/O.
 
-    ElevenLabsClient, AudioPlayer, LiveKitPublisher, and AlertManager are
-    patched so no HTTP calls, audio device access, LiveKit SDK calls, or
-    background alert tasks occur.
+    The TTS provider (via create_tts_provider), AudioPlayer, LiveKitPublisher,
+    and AlertManager are patched so no HTTP calls, audio device access, LiveKit
+    SDK calls, or background alert tasks occur.
     """
+    mock_provider = AsyncMock()
+    mock_provider.is_available = False
+    mock_provider.provider_name = "mock"
+    mock_provider.start = AsyncMock()
+    mock_provider.stop = AsyncMock()
+    mock_provider.synthesize = AsyncMock(return_value=None)
+
     with patch(
-        "echo.tts.tts_engine.ElevenLabsClient.start",
-        new_callable=AsyncMock,
-    ), patch(
-        "echo.tts.tts_engine.ElevenLabsClient.stop",
-        new_callable=AsyncMock,
-    ), patch(
-        "echo.tts.tts_engine.ElevenLabsClient.is_available",
-        new_callable=PropertyMock,
-        return_value=False,
+        "echo.tts.tts_engine.create_tts_provider",
+        return_value=mock_provider,
     ), patch(
         "echo.tts.tts_engine.AudioPlayer.start",
         new_callable=AsyncMock,

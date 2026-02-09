@@ -18,8 +18,8 @@ from echo.events.types import BlockReason
 from echo.summarizer.types import NarrationEvent, NarrationPriority
 from echo.tts.alert_manager import AlertManager
 from echo.tts.audio_player import AudioPlayer
-from echo.tts.elevenlabs_client import ElevenLabsClient
 from echo.tts.livekit_publisher import LiveKitPublisher
+from echo.tts.provider_factory import create_tts_provider
 from echo.tts.types import TTSState
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class TTSEngine:
 
     def __init__(self, narration_bus: EventBus, *, event_bus: EventBus | None = None) -> None:
         self._narration_bus = narration_bus
-        self._elevenlabs = ElevenLabsClient()
+        self._provider = create_tts_provider()
         self._player = AudioPlayer()
         self._livekit = LiveKitPublisher()
         self._queue: asyncio.Queue | None = None
@@ -46,7 +46,7 @@ class TTSEngine:
 
     async def start(self) -> None:
         """Start sub-components, subscribe to narration bus, begin consume loop."""
-        await self._elevenlabs.start()
+        await self._provider.start()
         await self._player.start()
         await self._livekit.start()
 
@@ -81,7 +81,7 @@ class TTSEngine:
 
         await self._livekit.stop()
         await self._player.stop()
-        await self._elevenlabs.stop()
+        await self._provider.stop()
         logger.info("TTS engine stopped")
 
     # ------------------------------------------------------------------
@@ -91,7 +91,7 @@ class TTSEngine:
     @property
     def state(self) -> TTSState:
         """Operational state of the TTS subsystem."""
-        tts_ok = self._elevenlabs.is_available
+        tts_ok = self._provider.is_available
         audio_ok = self._player.is_available
         if tts_ok and audio_ok:
             return TTSState.ACTIVE
@@ -101,8 +101,8 @@ class TTSEngine:
 
     @property
     def tts_available(self) -> bool:
-        """Whether ElevenLabs TTS is currently available."""
-        return self._elevenlabs.is_available
+        """Whether the TTS provider is currently available."""
+        return self._provider.is_available
 
     @property
     def audio_available(self) -> bool:
@@ -120,6 +120,11 @@ class TTSEngine:
         if self._alert_manager:
             return self._alert_manager.active_alert_count > 0
         return False
+
+    @property
+    def provider_name(self) -> str:
+        """Name of the active TTS provider."""
+        return self._provider.provider_name
 
     # ------------------------------------------------------------------
     # Consume loop
@@ -160,7 +165,7 @@ class TTSEngine:
             await self._player.play_alert(block_reason=narration.block_reason)
 
             # Activate alert manager BEFORE synthesis so repeat alerts work
-            # even if ElevenLabs is unavailable.
+            # even if TTS provider is unavailable.
             if self._alert_manager:
                 await self._alert_manager.activate(
                     session_id=narration.session_id,
@@ -171,15 +176,15 @@ class TTSEngine:
 
             logger.info(
                 "Synthesizing critical narration (tts_available=%s, text_len=%d)",
-                self._elevenlabs.is_available,
+                self._provider.is_available,
                 len(narration.text),
             )
-            pcm = await self._elevenlabs.synthesize(narration.text)
+            pcm = await self._provider.synthesize(narration.text)
             if pcm is None:
                 logger.warning(
                     "Critical narration TTS failed — synthesize returned None "
                     "(tts_available=%s)",
-                    self._elevenlabs.is_available,
+                    self._provider.is_available,
                 )
                 return
 
@@ -198,7 +203,7 @@ class TTSEngine:
 
     async def _handle_normal(self, narration: NarrationEvent) -> None:
         """NORMAL: synthesize and enqueue at priority 1."""
-        pcm = await self._elevenlabs.synthesize(narration.text)
+        pcm = await self._provider.synthesize(narration.text)
         if pcm is None:
             logger.debug("Skipping narration — TTS unavailable")
             return
@@ -213,7 +218,7 @@ class TTSEngine:
             logger.warning("Skipping LOW narration — audio backlog")
             return
 
-        pcm = await self._elevenlabs.synthesize(narration.text)
+        pcm = await self._provider.synthesize(narration.text)
         if pcm is None:
             logger.debug("Skipping narration — TTS unavailable")
             return
@@ -228,7 +233,7 @@ class TTSEngine:
         await self._player.interrupt()
         await self._player.play_alert(block_reason=block_reason)
 
-        pcm = await self._elevenlabs.synthesize(text)
+        pcm = await self._provider.synthesize(text)
         if pcm is None:
             return
 

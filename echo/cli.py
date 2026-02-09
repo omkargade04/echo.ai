@@ -196,7 +196,11 @@ def start(
     _validate_port(port)
 
     if no_tts:
-        os.environ["ECHO_ELEVENLABS_API_KEY"] = ""
+        provider = os.environ.get("ECHO_TTS_PROVIDER", "elevenlabs").lower()
+        if provider == "inworld":
+            os.environ["ECHO_INWORLD_API_KEY"] = ""
+        else:
+            os.environ["ECHO_ELEVENLABS_API_KEY"] = ""
         click.echo("TTS disabled via --no-tts flag")
 
     if no_stt:

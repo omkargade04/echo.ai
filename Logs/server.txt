@@ -1,0 +1,54 @@
+Starting Echo on port 7865...
+2026-02-09 12:21:52,160 [INFO] echo.server.app: FastAPI app created
+INFO:     Started server process [63721]
+INFO:     Waiting for application startup.
+2026-02-09 12:21:52,194 [INFO] echo.server.app: Echo server starting up
+2026-02-09 12:21:52,214 [INFO] echo.interceptors.transcript_watcher: Transcript watcher started — m
+onitoring /Users/omkar.gade/.claude/projects for .jsonl changes
+2026-02-09 12:21:52,214 [INFO] echo.server.app: Transcript watcher started
+2026-02-09 12:21:52,283 [INFO] echo.summarizer.llm_summarizer: Ollama is available at http://localh
+ost:11434 (model: qwen2.5:0.5b)
+2026-02-09 12:21:52,283 [INFO] echo.summarizer.summarizer: Summarizer started
+2026-02-09 12:21:52,283 [INFO] echo.server.app: Summarizer started
+2026-02-09 12:21:52,775 [INFO] echo.tts.elevenlabs_client: ElevenLabs TTS available at https://api.
+elevenlabs.io (voice: 21m00Tcm4TlvDq8ikWAM, model: eleven_turbo_v2_5)
+2026-02-09 12:21:52,775 [INFO] echo.tts.audio_player: Audio output device detected — playback enabl
+ed
+2026-02-09 12:21:52,776 [INFO] echo.tts.livekit_publisher: LiveKit not configured — remote audio di
+sabled
+2026-02-09 12:21:52,776 [INFO] echo.tts.alert_manager: AlertManager started
+2026-02-09 12:21:52,776 [INFO] echo.tts.tts_engine: TTS engine started (state=active)
+2026-02-09 12:21:52,777 [INFO] echo.server.app: TTS engine started (state=active)
+2026-02-09 12:21:52,777 [INFO] echo.stt.microphone: Microphone input device detected — capture enab
+led
+2026-02-09 12:21:53,288 [INFO] echo.stt.stt_client: STT (Whisper) available at https://api.openai.c
+om (model: whisper-1)
+2026-02-09 12:21:53,289 [INFO] echo.stt.response_dispatcher: Response dispatch method detected: tmu
+x
+2026-02-09 12:21:53,289 [INFO] echo.stt.stt_engine: STT engine started (state=active)
+2026-02-09 12:21:53,289 [INFO] echo.server.app: STT engine started (state=active)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:7865 (Press CTRL+C to quit)
+2026-02-09 12:21:09,916 [INFO] echo.summarizer.summarizer: Narration emitted: [normal] Got it — npm
+. How did the pipeline test go this time? With the logging fix, you
+2026-02-09 12:21:09,916 [INFO] echo.summarizer.summarizer: Narration emitted: [normal] Agent finish
+ed.
+2026-02-09 12:21:10,408 [WARNING] echo.tts.elevenlabs_client: ElevenLabs synthesis failed
+Traceback (most recent call last):
+  File "/Users/omkar.gade/Desktop/Personel/ai-voice-copilot/echo/tts/elevenlabs_client.py", line 74
+, in synthesize
+    response.raise_for_status()
+  File "/Users/omkar.gade/.pyenv/versions/3.11.11/lib/python3.11/site-packages/httpx/_models.py", l
+ine 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.elevenlabs.io/v1/text-t
+o-speech/21m00Tcm4TlvDq8ikWAM?output_format=pcm_16000'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
+2026-02-09 12:21:10,769 [WARNING] echo.tts.elevenlabs_client: ElevenLabs synthesis failed
+Traceback (most recent call last):
+  File "/Users/omkar.gade/Desktop/Personel/ai-voice-copilot/echo/tts/elevenlabs_client.py", line 74, in synthesize
+    response.raise_for_status()
+  File "/Users/omkar.gade/.pyenv/versions/3.11.11/lib/python3.11/site-packages/httpx/_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM?output_format=pcm_16000'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401

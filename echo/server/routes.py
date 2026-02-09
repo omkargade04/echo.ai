@@ -128,6 +128,7 @@ async def health(request: Request) -> dict:
         "audio_available": tts_engine.audio_available,
         "livekit_connected": tts_engine.livekit_connected,
         "alert_active": tts_engine.alert_active,
+        "tts_provider": tts_engine.provider_name,
     }
 
     if stt_engine is not None:
@@ -332,12 +333,12 @@ async def test_tts(request: Request) -> dict:
     }
 
     if not tts_engine.tts_available:
-        result["error"] = "ElevenLabs not available"
+        result["error"] = "TTS provider not available"
         return result
 
     test_text = "Hello, this is an Echo test."
     try:
-        pcm = await tts_engine._elevenlabs.synthesize(test_text)
+        pcm = await tts_engine._provider.synthesize(test_text)
     except Exception as exc:
         result["error"] = f"Synthesis exception: {exc}"
         return result

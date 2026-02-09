@@ -14,11 +14,11 @@ Echo solves this with a five-stage pipeline:
 |-------|------|--------|-------------|
 | 1 | **Intercept** | Complete | Capture events from Claude Code via hooks + transcript watching |
 | 2 | **Filter & Summarize** | Complete | Convert raw events into concise TTS-ready narration text |
-| 3 | **TTS** | Complete | Convert narration to speech via ElevenLabs + sounddevice + LiveKit |
+| 3 | **TTS** | Complete | Convert narration to speech via ElevenLabs or Inworld + sounddevice + LiveKit |
 | 4 | **Alert** | Complete | Distinct alert tones per block reason + repeat alerts until resolved |
 | 5 | **Voice Response** | Complete | Respond to agent prompts by voice — STT + option matching + keystroke dispatch |
 
-**775 tests. Zero new dependencies for Stages 4-5.**
+**865 tests. Zero new dependencies for Stages 4-5.**
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ Echo solves this with a five-stage pipeline:
 - Python 3.10+
 - macOS or Linux
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
-- (Optional) [ElevenLabs](https://elevenlabs.io) API key for text-to-speech
+- (Optional) [ElevenLabs](https://elevenlabs.io) or [Inworld](https://inworld.ai) API key for text-to-speech
 - (Optional) [OpenAI](https://platform.openai.com) API key for speech-to-text (Whisper)
 - (Optional) [Ollama](https://ollama.ai) for LLM-powered summarization
 - (Optional) [LiveKit Cloud](https://livekit.io) account for remote audio streaming
@@ -67,8 +67,14 @@ On startup, Echo automatically installs hooks into Claude Code's `~/.claude/sett
 ### Full Setup (TTS + Voice Response)
 
 ```bash
-# Set API keys
+# Option A: ElevenLabs TTS (default)
 export ECHO_ELEVENLABS_API_KEY="your-elevenlabs-key"
+
+# Option B: Inworld TTS
+export ECHO_TTS_PROVIDER="inworld"
+export ECHO_INWORLD_API_KEY="your-inworld-key"
+
+# STT (for voice response)
 export ECHO_STT_API_KEY="your-openai-key"
 
 # Recommended: run inside tmux for keystroke dispatch
@@ -82,7 +88,7 @@ Verify everything is operational:
 curl -s localhost:7865/health | python3 -m json.tool
 ```
 
-Key fields: `tts_available: true`, `stt_available: true`, `mic_available: true`, `dispatch_available: true`.
+Key fields: `tts_provider: "elevenlabs"` (or `"inworld"`), `tts_available: true`, `stt_available: true`, `mic_available: true`, `dispatch_available: true`.
 
 ### Watch Events (Debug)
 
@@ -113,7 +119,7 @@ Claude Code                          Echo Server
 |  Messages   -+--file watch------->|    EventBus -> Summarizer -> NarrationBus    |
 |              |                     |                                              |
 +--------------+                     |  Stage 3: TTS                                |
-                                     |    NarrationBus -> ElevenLabs -> speakers    |
+                                     |    NarrationBus -> TTS Provider -> speakers   |
 Developer                            |                                              |
 +--------------+                     |  Stage 4: Alert                              |
 |              |                     |    agent_blocked -> alert tone + narration   |
@@ -228,6 +234,14 @@ All configuration is via environment variables:
 
 ### Text-to-Speech (Optional)
 
+Echo supports multiple TTS providers via a pluggable provider abstraction. Set `ECHO_TTS_PROVIDER` to choose which provider to use.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ECHO_TTS_PROVIDER` | `elevenlabs` | TTS provider: `elevenlabs` or `inworld` |
+
+#### ElevenLabs (default)
+
 | Variable | Default | Description |
 |---|---|---|
 | `ECHO_ELEVENLABS_API_KEY` | `""` | ElevenLabs API key (empty = TTS disabled) |
@@ -235,6 +249,18 @@ All configuration is via environment variables:
 | `ECHO_TTS_VOICE_ID` | `21m00Tcm4TlvDq8ikWAM` | ElevenLabs voice ID (Rachel) |
 | `ECHO_TTS_MODEL` | `eleven_turbo_v2_5` | ElevenLabs model |
 | `ECHO_TTS_TIMEOUT` | `10.0` | ElevenLabs request timeout (seconds) |
+
+#### Inworld
+
+| Variable | Default | Description |
+|---|---|---|
+| `ECHO_INWORLD_API_KEY` | `""` | Inworld API key (empty = TTS disabled) |
+| `ECHO_INWORLD_BASE_URL` | `https://api.inworld.ai` | Inworld API base URL |
+| `ECHO_INWORLD_VOICE_ID` | `Ashley` | Inworld voice name |
+| `ECHO_INWORLD_MODEL` | `inworld-tts-1.5-max` | Inworld model ID |
+| `ECHO_INWORLD_TIMEOUT` | `10.0` | Inworld request timeout (seconds) |
+| `ECHO_INWORLD_TEMPERATURE` | `1.1` | Voice expressiveness (0.6-1.1) |
+| `ECHO_INWORLD_SPEAKING_RATE` | `1.0` | Speed multiplier (0.5-1.5) |
 
 ### LiveKit Remote Audio (Optional)
 
@@ -289,7 +315,7 @@ Echo never crashes the pipeline. Every component degrades gracefully:
 
 | Missing Component | Behavior |
 |---|---|
-| No ElevenLabs key | TTS disabled — narrations available via SSE only |
+| No TTS API key | TTS disabled — narrations available via SSE only |
 | No OpenAI key | STT disabled — use `POST /respond` for manual responses |
 | No Ollama | `agent_message` summarized via truncation |
 | No microphone | Voice capture disabled — `POST /respond` still works |
@@ -332,7 +358,10 @@ echo-copilot/
 |   |   +-- llm_summarizer.py         # Ollama LLM with truncation fallback
 |   +-- tts/
 |   |   +-- types.py                  # TTSState enum
+|   |   +-- provider.py               # TTSProvider abstract base class
+|   |   +-- provider_factory.py       # Factory: create_tts_provider()
 |   |   +-- elevenlabs_client.py      # ElevenLabs speech synthesis
+|   |   +-- inworld_client.py         # Inworld speech synthesis
 |   |   +-- audio_player.py           # Priority-queued audio playback
 |   |   +-- alert_tone.py             # Shared sine/fade primitives
 |   |   +-- alert_tones.py            # Per-block-reason alert generation
@@ -349,7 +378,7 @@ echo-copilot/
 |   +-- server/
 |       +-- app.py                    # FastAPI app with lifespan
 |       +-- routes.py                 # HTTP + SSE endpoints
-+-- tests/                            # 775 tests (pytest + pytest-asyncio)
++-- tests/                            # 865 tests (pytest + pytest-asyncio)
     +-- conftest.py
     +-- test_event_types.py
     +-- test_event_bus.py
@@ -365,10 +394,13 @@ echo-copilot/
     +-- test_server_narrations.py
     +-- test_tts_types.py
     +-- test_tts_config.py
+    +-- test_tts_provider.py
+    +-- test_provider_factory.py
     +-- test_alert_tone.py
     +-- test_alert_tones.py
     +-- test_alert_manager.py
     +-- test_elevenlabs_client.py
+    +-- test_inworld_client.py
     +-- test_audio_player.py
     +-- test_livekit_publisher.py
     +-- test_tts_engine.py
@@ -395,7 +427,7 @@ echo-copilot/
 | SSE Streaming | sse-starlette |
 | HTTP Client | httpx |
 | LLM Backend | Ollama (optional) |
-| TTS | ElevenLabs (optional) |
+| TTS | ElevenLabs or Inworld (optional, pluggable) |
 | STT | OpenAI Whisper (optional) |
 | Audio I/O | sounddevice + numpy |
 | Remote Audio | LiveKit Cloud (optional) |
@@ -408,7 +440,7 @@ echo-copilot/
 # Install dev dependencies
 pip install -e ".[dev]"
 
-# Run all 775 tests
+# Run all 865 tests
 pytest
 
 # Run with verbose output

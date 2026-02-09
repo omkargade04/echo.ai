@@ -330,3 +330,129 @@ class TestSTTConfigTypes:
         assert isinstance(cfg.STT_MAX_RECORD_DURATION, float)
         assert isinstance(cfg.STT_CONFIDENCE_THRESHOLD, float)
         assert isinstance(cfg.STT_HEALTH_CHECK_INTERVAL, float)
+
+
+# ---------------------------------------------------------------------------
+# TTS provider selection
+# ---------------------------------------------------------------------------
+
+
+class TestTTSProviderConfig:
+    """Verify TTS provider selection config constant."""
+
+    def test_tts_provider_default(self):
+        cfg = _reload_config()
+        assert cfg.TTS_PROVIDER == "elevenlabs"
+
+    def test_tts_provider_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_TTS_PROVIDER", "inworld")
+        cfg = _reload_config()
+        assert cfg.TTS_PROVIDER == "inworld"
+
+    def test_tts_provider_is_string(self):
+        cfg = _reload_config()
+        assert isinstance(cfg.TTS_PROVIDER, str)
+
+
+# ---------------------------------------------------------------------------
+# Inworld configuration defaults
+# ---------------------------------------------------------------------------
+
+
+class TestInworldConfigDefaults:
+    """Verify that Inworld config constants exist with the correct defaults."""
+
+    def test_inworld_api_key_default(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_API_KEY", "")
+        cfg = _reload_config()
+        assert cfg.INWORLD_API_KEY == ""
+
+    def test_inworld_base_url_default(self):
+        cfg = _reload_config()
+        assert cfg.INWORLD_BASE_URL == "https://api.inworld.ai"
+
+    def test_inworld_voice_id_default(self):
+        cfg = _reload_config()
+        assert cfg.INWORLD_VOICE_ID == "Ashley"
+
+    def test_inworld_model_default(self):
+        cfg = _reload_config()
+        assert cfg.INWORLD_MODEL == "inworld-tts-1.5-max"
+
+    def test_inworld_timeout_default(self):
+        cfg = _reload_config()
+        assert cfg.INWORLD_TIMEOUT == 10.0
+
+    def test_inworld_temperature_default(self):
+        cfg = _reload_config()
+        assert cfg.INWORLD_TEMPERATURE == 1.1
+
+    def test_inworld_speaking_rate_default(self):
+        cfg = _reload_config()
+        assert cfg.INWORLD_SPEAKING_RATE == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Inworld environment variable overrides
+# ---------------------------------------------------------------------------
+
+
+class TestInworldConfigEnvOverrides:
+    """Verify that Inworld env vars correctly override defaults."""
+
+    def test_inworld_api_key_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_API_KEY", "test-key")
+        cfg = _reload_config()
+        assert cfg.INWORLD_API_KEY == "test-key"
+
+    def test_inworld_base_url_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_BASE_URL", "https://custom.ai")
+        cfg = _reload_config()
+        assert cfg.INWORLD_BASE_URL == "https://custom.ai"
+
+    def test_inworld_voice_id_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_VOICE_ID", "Timothy")
+        cfg = _reload_config()
+        assert cfg.INWORLD_VOICE_ID == "Timothy"
+
+    def test_inworld_model_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_MODEL", "inworld-tts-1.5-mini")
+        cfg = _reload_config()
+        assert cfg.INWORLD_MODEL == "inworld-tts-1.5-mini"
+
+    def test_inworld_timeout_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_TIMEOUT", "20.0")
+        cfg = _reload_config()
+        assert cfg.INWORLD_TIMEOUT == 20.0
+
+    def test_inworld_temperature_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_TEMPERATURE", "0.8")
+        cfg = _reload_config()
+        assert cfg.INWORLD_TEMPERATURE == 0.8
+
+    def test_inworld_speaking_rate_override(self, monkeypatch):
+        monkeypatch.setenv("ECHO_INWORLD_SPEAKING_RATE", "1.5")
+        cfg = _reload_config()
+        assert cfg.INWORLD_SPEAKING_RATE == 1.5
+
+
+# ---------------------------------------------------------------------------
+# Inworld type checks
+# ---------------------------------------------------------------------------
+
+
+class TestInworldConfigTypes:
+    """Verify that Inworld config constants have the expected Python types."""
+
+    def test_inworld_string_constants(self):
+        cfg = _reload_config()
+        assert isinstance(cfg.INWORLD_API_KEY, str)
+        assert isinstance(cfg.INWORLD_BASE_URL, str)
+        assert isinstance(cfg.INWORLD_VOICE_ID, str)
+        assert isinstance(cfg.INWORLD_MODEL, str)
+
+    def test_inworld_float_constants(self):
+        cfg = _reload_config()
+        assert isinstance(cfg.INWORLD_TIMEOUT, float)
+        assert isinstance(cfg.INWORLD_TEMPERATURE, float)
+        assert isinstance(cfg.INWORLD_SPEAKING_RATE, float)

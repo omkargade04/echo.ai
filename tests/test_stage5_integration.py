@@ -439,9 +439,14 @@ class TestManualResponseIntegration:
             narration_bus = EventBus(maxsize=16)
             summarizer = Summarizer(event_bus=int_event_bus, narration_bus=narration_bus)
 
-        with patch("echo.tts.tts_engine.ElevenLabsClient.start", new_callable=AsyncMock), \
-             patch("echo.tts.tts_engine.ElevenLabsClient.stop", new_callable=AsyncMock), \
-             patch("echo.tts.tts_engine.ElevenLabsClient.is_available", new_callable=PropertyMock, return_value=False), \
+        _mock_prov = AsyncMock()
+        _mock_prov.is_available = False
+        _mock_prov.provider_name = "mock"
+        _mock_prov.start = AsyncMock()
+        _mock_prov.stop = AsyncMock()
+        _mock_prov.synthesize = AsyncMock(return_value=None)
+
+        with patch("echo.tts.tts_engine.create_tts_provider", return_value=_mock_prov), \
              patch("echo.tts.tts_engine.AudioPlayer.start", new_callable=AsyncMock), \
              patch("echo.tts.tts_engine.AudioPlayer.stop", new_callable=AsyncMock), \
              patch("echo.tts.tts_engine.AudioPlayer.is_available", new_callable=PropertyMock, return_value=False), \

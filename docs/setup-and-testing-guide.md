@@ -73,6 +73,14 @@ Echo is configured entirely via environment variables. All are optional — the 
 
 ### Stage 3: Text-to-Speech
 
+Echo supports pluggable TTS providers. Set `ECHO_TTS_PROVIDER` to choose which one to use.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ECHO_TTS_PROVIDER` | `elevenlabs` | TTS provider: `elevenlabs` or `inworld` |
+
+**ElevenLabs (default):**
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ECHO_ELEVENLABS_API_KEY` | `""` (disabled) | ElevenLabs API key. Empty = TTS disabled. |
@@ -80,6 +88,18 @@ Echo is configured entirely via environment variables. All are optional — the 
 | `ECHO_TTS_VOICE_ID` | `21m00Tcm4TlvDq8ikWAM` | Voice ID (default: Rachel) |
 | `ECHO_TTS_MODEL` | `eleven_turbo_v2_5` | ElevenLabs model |
 | `ECHO_TTS_TIMEOUT` | `10.0` | ElevenLabs request timeout (seconds) |
+
+**Inworld:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ECHO_INWORLD_API_KEY` | `""` (disabled) | Inworld API key. Empty = TTS disabled. |
+| `ECHO_INWORLD_BASE_URL` | `https://api.inworld.ai` | Inworld API base URL |
+| `ECHO_INWORLD_VOICE_ID` | `Ashley` | Inworld voice name |
+| `ECHO_INWORLD_MODEL` | `inworld-tts-1.5-max` | Inworld model ID |
+| `ECHO_INWORLD_TIMEOUT` | `10.0` | Inworld request timeout (seconds) |
+| `ECHO_INWORLD_TEMPERATURE` | `1.1` | Voice expressiveness (0.6-1.1) |
+| `ECHO_INWORLD_SPEAKING_RATE` | `1.0` | Speed multiplier (0.5-1.5) |
 
 ### Stage 3: LiveKit (Optional Remote Audio)
 
@@ -162,15 +182,31 @@ For the complete pipeline including audio output, voice response, and keystroke 
 
 ### Step 1: Get API Keys
 
-1. **ElevenLabs** (TTS): Sign up at https://elevenlabs.io → Profile → API Keys
-2. **OpenAI** (STT): Sign up at https://platform.openai.com → API Keys
+Choose one TTS provider:
+
+1. **ElevenLabs** (TTS, default): Sign up at https://elevenlabs.io → Profile → API Keys
+2. **Inworld** (TTS, alternative): Sign up at https://inworld.ai → Dashboard → API Keys
+
+Plus:
+
+3. **OpenAI** (STT): Sign up at https://platform.openai.com → API Keys
 
 ### Step 2: Set Environment Variables
 
 Add to your `~/.zshrc` or `~/.bashrc`:
 
+**Option A: ElevenLabs (default)**
+
 ```bash
 export ECHO_ELEVENLABS_API_KEY="your-elevenlabs-key-here"
+export ECHO_STT_API_KEY="your-openai-key-here"
+```
+
+**Option B: Inworld**
+
+```bash
+export ECHO_TTS_PROVIDER="inworld"
+export ECHO_INWORLD_API_KEY="your-inworld-key-here"
 export ECHO_STT_API_KEY="your-openai-key-here"
 ```
 
@@ -209,6 +245,7 @@ A fully operational setup looks like:
   "audio_available": true,
   "livekit_connected": false,
   "alert_active": false,
+  "tts_provider": "elevenlabs",
   "stt_state": "active",
   "stt_available": true,
   "mic_available": true,
@@ -221,7 +258,8 @@ A fully operational setup looks like:
 
 | Field | Expected | Meaning |
 |-------|----------|---------|
-| `tts_available` | `true` | ElevenLabs key is valid |
+| `tts_provider` | `"elevenlabs"` or `"inworld"` | Active TTS provider |
+| `tts_available` | `true` | TTS provider API key is valid |
 | `audio_available` | `true` | Speaker output device detected |
 | `stt_available` | `true` | Whisper API reachable |
 | `mic_available` | `true` | Microphone input device detected |
@@ -336,10 +374,10 @@ curl -X POST localhost:7865/event \
 
 ### Stage 3: Text-to-Speech
 
-Requires: `ECHO_ELEVENLABS_API_KEY` set and speakers/headphones connected.
+Requires: TTS provider API key set (`ECHO_ELEVENLABS_API_KEY` or `ECHO_INWORLD_API_KEY`) and speakers/headphones connected.
 
 ```bash
-# Start with TTS enabled
+# Start with TTS enabled (ElevenLabs by default, or set ECHO_TTS_PROVIDER=inworld)
 echo-copilot start
 
 # Send an event — you should HEAR the narration
@@ -502,7 +540,7 @@ This walkthrough tests the complete pipeline from Claude Code hook to keystroke 
 ### Setup
 
 ```bash
-# 1. Set all API keys
+# 1. Set API keys (ElevenLabs by default, or use ECHO_TTS_PROVIDER=inworld + ECHO_INWORLD_API_KEY)
 export ECHO_ELEVENLABS_API_KEY="your-key"
 export ECHO_STT_API_KEY="your-key"
 
@@ -709,6 +747,8 @@ Echo is designed to gracefully degrade when components are unavailable.
 | Alerts too frequent | `ECHO_ALERT_REPEAT_INTERVAL` | Raise (e.g., `60.0`) |
 | Alerts stop too soon | `ECHO_ALERT_MAX_REPEATS` | Raise (e.g., `10`) |
 | Want to use local Whisper server | `ECHO_STT_BASE_URL` | Set to `http://localhost:8080` |
+| Inworld voice too expressive | `ECHO_INWORLD_TEMPERATURE` | Lower (e.g., `0.6`) |
+| Inworld speech too fast/slow | `ECHO_INWORLD_SPEAKING_RATE` | Adjust (0.5-1.5) |
 
 ---
 
@@ -718,8 +758,8 @@ Echo is designed to gracefully degrade when components are unavailable.
 |---------|-------------|-----|
 | `echo-copilot: command not found` | Package not installed | `pip install -e ".[dev]"` |
 | `Port 7865 is already in use` | Server already running | `echo-copilot stop` then retry |
-| `tts_state: "disabled"` | No ElevenLabs key | Set `ECHO_ELEVENLABS_API_KEY` |
-| `tts_available: false` | Bad ElevenLabs key or network issue | Verify key at elevenlabs.io |
+| `tts_state: "disabled"` | No TTS provider API key | Set `ECHO_ELEVENLABS_API_KEY` or `ECHO_TTS_PROVIDER=inworld` + `ECHO_INWORLD_API_KEY` |
+| `tts_available: false` | Bad TTS API key or network issue | Verify key at elevenlabs.io or inworld.ai |
 | `audio_available: false` | No audio output device | Connect speakers/headphones, check `portaudio` |
 | `stt_state: "disabled"` | No OpenAI key | Set `ECHO_STT_API_KEY` |
 | `stt_available: false` | Bad OpenAI key or network issue | Verify key at platform.openai.com |
@@ -740,7 +780,7 @@ Echo is designed to gracefully degrade when components are unavailable.
 All tests use mocked I/O — no API keys, microphone, or speakers needed.
 
 ```bash
-# Run all 775 tests
+# Run all 865 tests
 pytest
 
 # Verbose output
