@@ -32,9 +32,19 @@ _ECHO_HOOKS: dict = {
             ],
         }
     ],
+    "PermissionRequest": [
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": _HOOK_COMMAND,
+                }
+            ],
+        }
+    ],
     "Notification": [
         {
-            "matcher": "permission_prompt|idle_prompt",
+            "matcher": "permission_prompt|idle_prompt|elicitation_dialog",
             "hooks": [
                 {
                     "type": "command",

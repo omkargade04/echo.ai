@@ -405,7 +405,7 @@ class TestAlertResolution:
     ):
         await alert_manager.start()
         # Should not raise
-        await alert_manager._clear_alert("nonexistent")
+        await alert_manager.clear_alert("nonexistent")
         assert alert_manager.active_alert_count == 0
         await alert_manager.stop()
 

@@ -37,6 +37,12 @@ class ElevenLabsClient:
             logger.info("No ElevenLabs API key — TTS disabled")
             return
 
+        logger.info(
+            "ElevenLabs API key loaded: %s...%s (len=%d)",
+            ELEVENLABS_API_KEY[:5],
+            ELEVENLABS_API_KEY[-5:],
+            len(ELEVENLABS_API_KEY),
+        )
         self._client = httpx.AsyncClient(
             base_url=ELEVENLABS_BASE_URL,
             timeout=TTS_TIMEOUT,
@@ -71,6 +77,13 @@ class ElevenLabsClient:
                 json={"text": text, "model_id": TTS_MODEL},
                 params={"output_format": "pcm_16000"},
             )
+            if response.status_code != 200:
+                logger.warning(
+                    "ElevenLabs synthesis status=%d body=%s headers_sent=%s",
+                    response.status_code,
+                    response.text[:500],
+                    {k: v[:8] + "..." for k, v in response.request.headers.items() if k == "xi-api-key"},
+                )
             response.raise_for_status()
             return response.content
         except Exception:
@@ -78,7 +91,11 @@ class ElevenLabsClient:
             return None
 
     async def _check_health(self) -> None:
-        """Validate the API key via GET /v1/user."""
+        """Validate the API key via GET /v1/user (requires authentication).
+
+        The ``/v1/models`` endpoint is public and succeeds without a valid
+        key, so we use ``/v1/user`` instead to verify the key actually works.
+        """
         self._last_health_check = time.monotonic()
         if not self._client:
             self._available = False
@@ -96,7 +113,8 @@ class ElevenLabsClient:
             else:
                 self._available = False
                 logger.warning(
-                    "ElevenLabs returned status %d — TTS unavailable",
+                    "ElevenLabs health check returned status %d — TTS unavailable "
+                    "(check your API key)",
                     resp.status_code,
                 )
         except (httpx.ConnectError, httpx.TimeoutException, OSError) as exc:

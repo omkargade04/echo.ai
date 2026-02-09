@@ -90,9 +90,10 @@ class TestInstallHooks:
         assert settings_path.exists()
         data = _read_settings(settings_path)
         assert "hooks" in data
-        # All five hook event names should be present
+        # All six hook event names should be present
         for event_name in [
             "PostToolUse",
+            "PermissionRequest",
             "Notification",
             "Stop",
             "SessionStart",

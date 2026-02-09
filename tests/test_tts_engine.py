@@ -595,10 +595,10 @@ class TestAlertManagerIntegration:
         mock_livekit.publish.assert_awaited_with(_PCM_BYTES)
         await engine.stop()
 
-    async def test_critical_no_pcm_skips_alert_activation(
+    async def test_critical_no_pcm_still_activates_alert(
         self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
     ):
-        """When synthesize returns None, alert_manager.activate is NOT called."""
+        """When synthesize returns None, alert_manager.activate IS still called."""
         mock_elevenlabs.synthesize = AsyncMock(return_value=None)
         mock_am = AsyncMock()
         mock_am.set_repeat_callback = MagicMock()
@@ -614,7 +614,8 @@ class TestAlertManagerIntegration:
         await narration_bus.emit(narration)
         await asyncio.sleep(0.05)
 
-        mock_am.activate.assert_not_awaited()
+        # Alert manager should still be activated so repeat alerts work
+        mock_am.activate.assert_awaited_once()
         await eng.stop()
 
     async def test_alert_active_true_when_alert_exists(
@@ -727,6 +728,53 @@ class TestAlertManagerIntegration:
             narration_text="Pick an option!",
             options=["RS256", "HS256"],
         )
+        await eng.stop()
+
+    async def test_processing_critical_flag_set_during_critical(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        """_processing_critical is True during _handle_critical and False after."""
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+
+        assert eng._processing_critical is False
+
+        narration = _make_narration("Alert!", NarrationPriority.CRITICAL)
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        # After processing completes, flag should be False
+        assert eng._processing_critical is False
+        await eng.stop()
+
+    async def test_processing_critical_flag_cleared_on_error(
+        self, mock_elevenlabs, mock_player, mock_livekit, narration_bus, monkeypatch
+    ):
+        """_processing_critical is cleared even if _handle_critical raises."""
+        mock_am = AsyncMock()
+        mock_am.set_repeat_callback = MagicMock()
+        mock_am.active_alert_count = 0
+        mock_player.interrupt = AsyncMock(side_effect=RuntimeError("boom"))
+        monkeypatch.setattr(
+            "echo.tts.tts_engine.AlertManager", lambda eb: mock_am
+        )
+        event_bus = EventBus(maxsize=64)
+        eng = TTSEngine(narration_bus, event_bus=event_bus)
+        await eng.start()
+
+        narration = _make_narration("Alert!", NarrationPriority.CRITICAL)
+        await narration_bus.emit(narration)
+        await asyncio.sleep(0.05)
+
+        # Flag should be cleared even after error
+        assert eng._processing_critical is False
         await eng.stop()
 
     async def test_critical_passes_empty_options_to_alert_manager(

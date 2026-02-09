@@ -27,6 +27,7 @@ class MicrophoneCapture:
     def __init__(self) -> None:
         self._available: bool = False
         self._listening: bool = False
+        self._cancel_requested: bool = False
 
     async def start(self) -> None:
         """Probe for input device. No-op if unavailable."""
@@ -40,6 +41,7 @@ class MicrophoneCapture:
 
     async def stop(self) -> None:
         """Release resources."""
+        self._cancel_requested = True
         self._listening = False
         self._available = False
 
@@ -50,6 +52,14 @@ class MicrophoneCapture:
     @property
     def is_listening(self) -> bool:
         return self._listening
+
+    def cancel(self) -> None:
+        """Request cancellation of active capture.
+
+        Thread-safe — can be called from any thread or coroutine.
+        The capture thread checks this flag periodically and exits early.
+        """
+        self._cancel_requested = True
 
     async def capture_until_silence(
         self,
@@ -65,6 +75,7 @@ class MicrophoneCapture:
         Returns PCM 16-bit mono bytes, or None if:
         - Microphone not available
         - No speech detected within listen_timeout
+        - Capture cancelled via cancel()
         - Any error occurs
 
         Uses energy-based VAD (RMS amplitude threshold) to detect speech
@@ -79,6 +90,7 @@ class MicrophoneCapture:
         sr = sample_rate or AUDIO_SAMPLE_RATE
         timeout = listen_timeout or STT_LISTEN_TIMEOUT
 
+        self._cancel_requested = False
         self._listening = True
         try:
             result = await asyncio.to_thread(
@@ -126,6 +138,10 @@ class MicrophoneCapture:
             ) as stream:
                 # Phase 1: Wait for speech onset
                 while wait_elapsed < listen_timeout:
+                    if self._cancel_requested:
+                        logger.debug("Microphone capture cancelled during wait phase")
+                        return None
+
                     data, overflowed = stream.read(chunk_samples)
                     rms = self._compute_rms(data)
                     wait_elapsed += chunk_duration
@@ -141,6 +157,10 @@ class MicrophoneCapture:
 
                 # Phase 2: Record until silence or max duration
                 while total_elapsed < max_duration:
+                    if self._cancel_requested:
+                        logger.debug("Microphone capture cancelled during record phase")
+                        break
+
                     data, overflowed = stream.read(chunk_samples)
                     frames.append(data.copy())
                     total_elapsed += chunk_duration

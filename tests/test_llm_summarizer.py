@@ -327,7 +327,7 @@ class TestTruncation:
     """Tests for text truncation behavior."""
 
     async def test_short_text_unchanged(self):
-        """Text <= 150 chars should be returned as-is."""
+        """Text <= max truncation length should be returned as-is."""
         summarizer = LLMSummarizer()
         summarizer._ollama_available = False
 
@@ -339,11 +339,11 @@ class TestTruncation:
         assert result.summarization_method == SummarizationMethod.TRUNCATION
 
     async def test_long_text_truncated_with_ellipsis(self):
-        """Text > 150 chars should get first 140 chars + '...'."""
+        """Text > max truncation length should get first N chars + '...'."""
         summarizer = LLMSummarizer()
         summarizer._ollama_available = False
 
-        long_text = "B" * 300
+        long_text = "B" * (_MAX_TRUNCATION_LENGTH + 500)
         event = _make_agent_message_event(text=long_text)
         result = await summarizer.summarize(event)
 
@@ -351,12 +351,12 @@ class TestTruncation:
         assert len(result.text) == _TRUNCATED_LENGTH + 3
         assert result.summarization_method == SummarizationMethod.TRUNCATION
 
-    async def test_text_exactly_151_chars_is_truncated(self):
-        """Text of 151 chars (just over the limit) should be truncated."""
+    async def test_text_just_over_limit_is_truncated(self):
+        """Text just over the max truncation length should be truncated."""
         summarizer = LLMSummarizer()
         summarizer._ollama_available = False
 
-        text = "C" * 151
+        text = "C" * (_MAX_TRUNCATION_LENGTH + 1)
         event = _make_agent_message_event(text=text)
         result = await summarizer.summarize(event)
 
@@ -389,12 +389,12 @@ class TestTruncation:
         summarizer = LLMSummarizer()
         summarizer._ollama_available = False
 
-        # Build text so that char at position 139 is a space
-        text = "D" * 139 + " " + "E" * 200
+        # Build text so that char at position (_TRUNCATED_LENGTH - 1) is a space
+        text = "D" * (_TRUNCATED_LENGTH - 1) + " " + "E" * 200
         event = _make_agent_message_event(text=text)
         result = await summarizer.summarize(event)
 
-        # rstrip removes trailing spaces from the 140 slice, then appends ...
+        # rstrip removes trailing spaces from the truncated slice, then appends ...
         assert result.text.endswith("...")
         assert not result.text[:-3].endswith(" ")
 

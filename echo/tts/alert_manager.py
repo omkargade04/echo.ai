@@ -119,7 +119,7 @@ class AlertManager:
         (old repeat timer cancelled).
         """
         # Clear any existing alert for this session
-        await self._clear_alert(session_id)
+        await self.clear_alert(session_id)
 
         alert = ActiveAlert(
             session_id=session_id,
@@ -169,10 +169,14 @@ class AlertManager:
                     "Alert resolved for session %s (event: %s)",
                     event.session_id, event.type.value,
                 )
-                await self._clear_alert(event.session_id)
+                await self.clear_alert(event.session_id)
 
-    async def _clear_alert(self, session_id: str) -> None:
-        """Remove an active alert and cancel its repeat timer."""
+    async def clear_alert(self, session_id: str) -> None:
+        """Remove an active alert and cancel its repeat timer.
+
+        Called internally when a non-blocked event resolves the session,
+        and externally by STTEngine / POST /respond after dispatching a response.
+        """
         alert = self._active_alerts.pop(session_id, None)
         if alert and alert.repeat_task and not alert.repeat_task.done():
             alert.repeat_task.cancel()

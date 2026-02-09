@@ -234,6 +234,193 @@ class TestNotificationOptions:
 
 
 # ---------------------------------------------------------------------------
+# PermissionRequest -> agent_blocked
+# ---------------------------------------------------------------------------
+
+
+class TestParsePermissionRequest:
+    """PermissionRequest hook payloads should map to AGENT_BLOCKED events."""
+
+    def test_permission_request_bash_command(self):
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-1",
+            "tool_name": "Bash",
+            "tool_input": {"command": "rm -rf node_modules"},
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.type == EventType.AGENT_BLOCKED
+        assert event.session_id == "sess-pr-1"
+        assert event.source == "hook"
+        assert event.block_reason == BlockReason.PERMISSION_PROMPT
+        assert event.message == "Claude wants to run: rm -rf node_modules"
+        assert event.options == ["Allow", "Deny"]
+        assert event.tool_name == "Bash"
+        assert event.tool_input == {"command": "rm -rf node_modules"}
+
+    def test_permission_request_write_tool(self):
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-2",
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/tmp/out.py", "content": "x = 1"},
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.type == EventType.AGENT_BLOCKED
+        assert event.block_reason == BlockReason.PERMISSION_PROMPT
+        assert event.message == "Claude wants to write to: /tmp/out.py"
+
+    def test_permission_request_edit_tool(self):
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-3",
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "/tmp/out.py"},
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.message == "Claude wants to edit: /tmp/out.py"
+
+    def test_permission_request_unknown_tool(self):
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-4",
+            "tool_name": "CustomTool",
+            "tool_input": {"param": "value"},
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.message == "Claude wants to use CustomTool"
+
+    def test_permission_request_missing_tool_input(self):
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-5",
+            "tool_name": "Bash",
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.type == EventType.AGENT_BLOCKED
+        assert event.block_reason == BlockReason.PERMISSION_PROMPT
+        assert event.message == "Claude wants to use Bash"
+        assert event.tool_input is None
+
+    def test_permission_request_missing_tool_name(self):
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-6",
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.tool_name == "unknown tool"
+        assert event.message == "Claude wants to use unknown tool"
+
+    def test_permission_request_with_permission_suggestions(self):
+        """permission_suggestions should not affect the event (just logged)."""
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-7",
+            "tool_name": "Bash",
+            "tool_input": {"command": "npm test"},
+            "permission_suggestions": [
+                {"type": "toolAlwaysAllow", "tool": "Bash"}
+            ],
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.type == EventType.AGENT_BLOCKED
+        assert event.message == "Claude wants to run: npm test"
+        assert event.options == ["Allow", "Deny"]
+
+    def test_permission_request_ask_user_question(self):
+        """AskUserQuestion should extract the actual question and options."""
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-8",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {
+                "questions": [
+                    {
+                        "question": "Which database should we use?",
+                        "header": "Database",
+                        "options": [
+                            {"label": "PostgreSQL", "description": "Relational DB"},
+                            {"label": "MongoDB", "description": "Document DB"},
+                        ],
+                        "multiSelect": False,
+                    }
+                ]
+            },
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.type == EventType.AGENT_BLOCKED
+        assert event.block_reason == BlockReason.PERMISSION_PROMPT
+        assert "Which database should we use?" in event.message
+        assert "PostgreSQL" in event.message
+        assert "MongoDB" in event.message
+        assert event.options == ["PostgreSQL", "MongoDB"]
+
+    def test_permission_request_ask_user_question_no_options(self):
+        """AskUserQuestion with no options still extracts the question text."""
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-9",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {
+                "questions": [
+                    {
+                        "question": "What is your name?",
+                        "header": "Name",
+                        "options": [],
+                        "multiSelect": False,
+                    }
+                ]
+            },
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert "What is your name?" in event.message
+
+    def test_permission_request_ask_user_question_empty_questions(self):
+        """AskUserQuestion with empty questions list falls back gracefully."""
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-10",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {"questions": []},
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert "question" in event.message.lower()
+        # No question options to extract, falls back to Allow/Deny
+        assert event.options == ["Allow", "Deny"]
+
+    def test_permission_request_ask_user_question_no_options_falls_back(self):
+        """AskUserQuestion with no option labels falls back to Allow/Deny."""
+        raw = {
+            "hook_event_name": "PermissionRequest",
+            "session_id": "sess-pr-11",
+            "tool_name": "AskUserQuestion",
+            "tool_input": {
+                "questions": [
+                    {
+                        "question": "What is your name?",
+                        "header": "Name",
+                        "options": [],
+                        "multiSelect": False,
+                    }
+                ]
+            },
+        }
+        event = parse_hook_event(raw)
+        assert event is not None
+        assert event.options == ["Allow", "Deny"]
+
+
+# ---------------------------------------------------------------------------
 # Stop -> agent_stopped
 # ---------------------------------------------------------------------------
 

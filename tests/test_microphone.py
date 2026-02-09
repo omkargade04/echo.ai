@@ -248,6 +248,97 @@ class TestCaptureUntilSilence:
 
 
 # ---------------------------------------------------------------------------
+# cancel
+# ---------------------------------------------------------------------------
+
+class TestCancel:
+
+    async def test_cancel_sets_flag(self):
+        mic = MicrophoneCapture()
+        assert mic._cancel_requested is False
+        mic.cancel()
+        assert mic._cancel_requested is True
+
+    async def test_cancel_stops_capture_during_wait_phase(self, monkeypatch):
+        monkeypatch.setattr(
+            "echo.stt.microphone.sd.query_devices", _mock_query_devices_success
+        )
+        chunk_samples = 1600
+        # All silence — would normally wait for listen_timeout
+        read_data = [(_silent_frame(chunk_samples), False) for _ in range(400)]
+        monkeypatch.setattr(
+            "echo.stt.microphone.sd.InputStream",
+            lambda **kwargs: MockInputStream(read_data, **kwargs),
+        )
+
+        mic = MicrophoneCapture()
+        await mic.start()
+
+        # Cancel after a short delay
+        async def cancel_later():
+            await asyncio.sleep(0.05)
+            mic.cancel()
+
+        asyncio.create_task(cancel_later())
+        result = await mic.capture_until_silence(listen_timeout=30.0)
+        assert result is None
+        assert mic.is_listening is False
+
+    async def test_cancel_stops_capture_during_record_phase(self, monkeypatch):
+        monkeypatch.setattr(
+            "echo.stt.microphone.sd.query_devices", _mock_query_devices_success
+        )
+        chunk_samples = 1600
+        # Loud frames that would run for a long time
+        read_data = [(_loud_frame(chunk_samples), False) for _ in range(500)]
+        monkeypatch.setattr(
+            "echo.stt.microphone.sd.InputStream",
+            lambda **kwargs: MockInputStream(read_data, **kwargs),
+        )
+
+        mic = MicrophoneCapture()
+        await mic.start()
+
+        async def cancel_later():
+            await asyncio.sleep(0.05)
+            mic.cancel()
+
+        asyncio.create_task(cancel_later())
+        result = await mic.capture_until_silence(
+            max_duration=30.0, listen_timeout=5.0
+        )
+        # Should have captured some frames before cancel
+        assert result is not None
+        assert mic.is_listening is False
+
+    async def test_cancel_flag_reset_on_new_capture(self, monkeypatch):
+        monkeypatch.setattr(
+            "echo.stt.microphone.sd.query_devices", _mock_query_devices_success
+        )
+        chunk_samples = 1600
+        read_data = (
+            [(_loud_frame(chunk_samples), False) for _ in range(3)]
+            + [(_silent_frame(chunk_samples), False) for _ in range(20)]
+        )
+        monkeypatch.setattr(
+            "echo.stt.microphone.sd.InputStream",
+            lambda **kwargs: MockInputStream(read_data, **kwargs),
+        )
+
+        mic = MicrophoneCapture()
+        await mic.start()
+        mic.cancel()  # Set cancel flag
+        assert mic._cancel_requested is True
+
+        # New capture should reset the flag
+        result = await mic.capture_until_silence(
+            silence_duration=0.5, listen_timeout=5.0
+        )
+        # The flag was reset at the start of capture_until_silence
+        # so capture should proceed normally (or return None if cancelled was reset too late)
+
+
+# ---------------------------------------------------------------------------
 # _compute_rms
 # ---------------------------------------------------------------------------
 

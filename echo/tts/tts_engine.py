@@ -36,6 +36,9 @@ class TTSEngine:
         self._queue: asyncio.Queue | None = None
         self._consume_task: asyncio.Task | None = None
         self._running: bool = False
+        self._processing_critical: bool = False
+        self._critical_complete: asyncio.Event = asyncio.Event()
+        self._critical_complete.set()  # Initially: no critical work pending
         self._event_bus = event_bus
         self._alert_manager: AlertManager | None = None
         if event_bus is not None:
@@ -150,26 +153,48 @@ class TTSEngine:
 
     async def _handle_critical(self, narration: NarrationEvent) -> None:
         """CRITICAL: interrupt current playback, play reason-specific alert, synthesize, play immediately."""
-        await self._player.interrupt()
-        await self._player.play_alert(block_reason=narration.block_reason)
+        self._critical_complete.clear()
+        self._processing_critical = True
+        try:
+            await self._player.interrupt()
+            await self._player.play_alert(block_reason=narration.block_reason)
 
-        pcm = await self._elevenlabs.synthesize(narration.text)
-        if pcm is None:
-            logger.debug("Skipping critical narration — TTS unavailable")
-            return
+            # Activate alert manager BEFORE synthesis so repeat alerts work
+            # even if ElevenLabs is unavailable.
+            if self._alert_manager:
+                await self._alert_manager.activate(
+                    session_id=narration.session_id,
+                    block_reason=narration.block_reason,
+                    narration_text=narration.text,
+                    options=narration.options,
+                )
 
-        await self._player.play_immediate(pcm)
-        await self._livekit.publish(pcm)
-
-        if self._alert_manager:
-            await self._alert_manager.activate(
-                session_id=narration.session_id,
-                block_reason=narration.block_reason,
-                narration_text=narration.text,
-                options=narration.options,
+            logger.info(
+                "Synthesizing critical narration (tts_available=%s, text_len=%d)",
+                self._elevenlabs.is_available,
+                len(narration.text),
             )
+            pcm = await self._elevenlabs.synthesize(narration.text)
+            if pcm is None:
+                logger.warning(
+                    "Critical narration TTS failed — synthesize returned None "
+                    "(tts_available=%s)",
+                    self._elevenlabs.is_available,
+                )
+                return
 
-        logger.info("CRITICAL narration: %s", narration.text[:80])
+            if len(pcm) == 0:
+                logger.warning("Critical narration TTS returned empty PCM data")
+                return
+
+            logger.info("Synthesis OK — %d bytes PCM, playing now", len(pcm))
+            await self._player.play_immediate(pcm)
+            await self._livekit.publish(pcm)
+
+            logger.info("CRITICAL narration played: %s", narration.text[:80])
+        finally:
+            self._processing_critical = False
+            self._critical_complete.set()
 
     async def _handle_normal(self, narration: NarrationEvent) -> None:
         """NORMAL: synthesize and enqueue at priority 1."""

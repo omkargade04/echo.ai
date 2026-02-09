@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 # Claude Code hook event names we handle.
 _HOOK_POST_TOOL_USE = "PostToolUse"
 _HOOK_NOTIFICATION = "Notification"
+_HOOK_PERMISSION_REQUEST = "PermissionRequest"
 _HOOK_STOP = "Stop"
 _HOOK_SESSION_START = "SessionStart"
 _HOOK_SESSION_END = "SessionEnd"
@@ -37,6 +38,9 @@ def parse_hook_event(raw_json: dict) -> EchoEvent | None:
 
         if hook_event_name == _HOOK_NOTIFICATION:
             return _parse_notification(raw_json, session_id)
+
+        if hook_event_name == _HOOK_PERMISSION_REQUEST:
+            return _parse_permission_request(raw_json, session_id)
 
         if hook_event_name == _HOOK_STOP:
             return _parse_stop(raw_json, session_id)
@@ -84,6 +88,108 @@ def _parse_post_tool_use(raw: dict, session_id: str) -> EchoEvent:
         tool_input=tool_input,
         tool_output=tool_output,
     )
+
+
+def _parse_permission_request(raw: dict, session_id: str) -> EchoEvent:
+    """Map a ``PermissionRequest`` hook payload to ``EventType.AGENT_BLOCKED``.
+
+    Fires when a permission dialog is about to be shown to the user.
+    The payload contains ``tool_name`` and ``tool_input`` describing the
+    action that needs approval.
+    """
+    tool_name: str = raw.get("tool_name", "unknown tool")
+    tool_input: dict | None = raw.get("tool_input")
+
+    message = _build_permission_message(tool_name, tool_input)
+
+    logger.debug(
+        "PermissionRequest: tool_name=%s message=%s",
+        tool_name, message,
+    )
+
+    # For AskUserQuestion, use the actual question option labels so
+    # the narration reads them and STT can match spoken responses.
+    options: list[str] = ["Allow", "Deny"]
+    if tool_name == "AskUserQuestion" and tool_input:
+        question_options = _extract_question_option_labels(tool_input)
+        if question_options:
+            options = question_options
+
+    return EchoEvent(
+        type=EventType.AGENT_BLOCKED,
+        session_id=session_id,
+        source="hook",
+        block_reason=BlockReason.PERMISSION_PROMPT,
+        message=message,
+        options=options,
+        tool_name=tool_name,
+        tool_input=tool_input,
+    )
+
+
+def _build_permission_message(tool_name: str, tool_input: dict | None) -> str:
+    """Build a human-readable message for a permission request."""
+    if tool_input and isinstance(tool_input, dict):
+        if tool_name == "Bash" and "command" in tool_input:
+            return f"Claude wants to run: {tool_input['command']}"
+        if tool_name == "Write" and "file_path" in tool_input:
+            return f"Claude wants to write to: {tool_input['file_path']}"
+        if tool_name == "Edit" and "file_path" in tool_input:
+            return f"Claude wants to edit: {tool_input['file_path']}"
+        if tool_name == "AskUserQuestion":
+            return _build_ask_user_question_message(tool_input)
+    return f"Claude wants to use {tool_name}"
+
+
+def _extract_question_option_labels(tool_input: dict) -> list[str] | None:
+    """Extract option labels from AskUserQuestion tool_input.
+
+    Returns a list of label strings, or None if extraction fails.
+    """
+    questions = tool_input.get("questions")
+    if not questions or not isinstance(questions, list):
+        return None
+    first_q = questions[0]
+    if not isinstance(first_q, dict):
+        return None
+    options = first_q.get("options", [])
+    if not options or not isinstance(options, list):
+        return None
+    labels = []
+    for opt in options:
+        if isinstance(opt, dict):
+            labels.append(opt.get("label", str(opt)))
+        else:
+            labels.append(str(opt))
+    return labels if labels else None
+
+
+def _build_ask_user_question_message(tool_input: dict) -> str:
+    """Extract the actual question and options from AskUserQuestion tool_input."""
+    questions = tool_input.get("questions")
+    if not questions or not isinstance(questions, list):
+        return "Claude wants to ask you a question"
+
+    first_q = questions[0]
+    if not isinstance(first_q, dict):
+        return "Claude wants to ask you a question"
+
+    question_text = first_q.get("question", "")
+    options = first_q.get("options", [])
+
+    parts = [f"Claude is asking: {question_text}"] if question_text else ["Claude wants to ask you a question"]
+
+    if options and isinstance(options, list):
+        option_labels = []
+        for opt in options:
+            if isinstance(opt, dict):
+                option_labels.append(opt.get("label", str(opt)))
+            else:
+                option_labels.append(str(opt))
+        if option_labels:
+            parts.append("The choices are: " + ", ".join(option_labels))
+
+    return " ".join(parts)
 
 
 def _parse_notification(raw: dict, session_id: str) -> EchoEvent:

@@ -18,7 +18,8 @@ def _reload_config():
 class TestTTSConfigDefaults:
     """Verify that every TTS config constant exists with the correct default."""
 
-    def test_elevenlabs_api_key_default(self):
+    def test_elevenlabs_api_key_default(self, monkeypatch):
+        monkeypatch.setenv("ECHO_ELEVENLABS_API_KEY", "")
         cfg = _reload_config()
         assert cfg.ELEVENLABS_API_KEY == ""
 
@@ -42,15 +43,18 @@ class TestTTSConfigDefaults:
         cfg = _reload_config()
         assert cfg.TTS_HEALTH_CHECK_INTERVAL == 60.0
 
-    def test_livekit_url_default(self):
+    def test_livekit_url_default(self, monkeypatch):
+        monkeypatch.setenv("LIVEKIT_URL", "")
         cfg = _reload_config()
         assert cfg.LIVEKIT_URL == ""
 
-    def test_livekit_api_key_default(self):
+    def test_livekit_api_key_default(self, monkeypatch):
+        monkeypatch.setenv("LIVEKIT_API_KEY", "")
         cfg = _reload_config()
         assert cfg.LIVEKIT_API_KEY == ""
 
-    def test_livekit_api_secret_default(self):
+    def test_livekit_api_secret_default(self, monkeypatch):
+        monkeypatch.setenv("LIVEKIT_API_SECRET", "")
         cfg = _reload_config()
         assert cfg.LIVEKIT_API_SECRET == ""
 
@@ -191,7 +195,8 @@ class TestAlertConfigDefaults:
 class TestSTTConfigDefaults:
     """Verify that STT config constants exist with the correct defaults."""
 
-    def test_stt_api_key_default(self):
+    def test_stt_api_key_default(self, monkeypatch):
+        monkeypatch.setenv("ECHO_STT_API_KEY", "")
         cfg = _reload_config()
         assert cfg.STT_API_KEY == ""
 
@@ -231,7 +236,8 @@ class TestSTTConfigDefaults:
         cfg = _reload_config()
         assert cfg.STT_HEALTH_CHECK_INTERVAL == 60.0
 
-    def test_dispatch_method_default(self):
+    def test_dispatch_method_default(self, monkeypatch):
+        monkeypatch.setenv("ECHO_DISPATCH_METHOD", "")
         cfg = _reload_config()
         assert cfg.DISPATCH_METHOD == ""
 

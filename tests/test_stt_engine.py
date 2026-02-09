@@ -48,6 +48,7 @@ def mock_microphone(monkeypatch):
     mock.is_available = True
     mock.is_listening = False
     mock.capture_until_silence = AsyncMock(return_value=_PCM_BYTES)
+    mock.cancel = MagicMock()
     monkeypatch.setattr("echo.stt.stt_engine.MicrophoneCapture", lambda: mock)
     return mock
 
@@ -610,4 +611,95 @@ class TestResponseBusEmission:
         await asyncio.sleep(0.1)
 
         mock_dispatcher.dispatch.assert_awaited_once()
+        await engine.stop()
+
+
+# ---------------------------------------------------------------------------
+# TTS wait coordination tests
+# ---------------------------------------------------------------------------
+
+
+class TestWaitForTts:
+    """Tests for _wait_for_tts — STT waits for TTS to finish critical playback."""
+
+    async def test_wait_for_tts_returns_immediately_when_no_tts_engine(
+        self, engine, event_bus
+    ):
+        """When tts_engine is None, _wait_for_tts returns immediately."""
+        assert engine._tts_engine is None
+        await engine._wait_for_tts()  # Should not hang
+
+    async def test_wait_for_tts_returns_when_event_set(
+        self, mock_microphone, mock_stt_client, mock_dispatcher, mock_matcher, event_bus, monkeypatch
+    ):
+        """When _critical_complete is set (no pending work), returns after initial delay."""
+        monkeypatch.setattr("echo.stt.stt_engine._TTS_WAIT_INITIAL", 0.01)
+        mock_tts = MagicMock()
+        mock_tts._critical_complete = asyncio.Event()
+        mock_tts._critical_complete.set()  # No pending critical work
+        eng = STTEngine(event_bus, tts_engine=mock_tts)
+        await asyncio.wait_for(eng._wait_for_tts(), timeout=2.0)
+
+    async def test_wait_for_tts_waits_until_event_set(
+        self, mock_microphone, mock_stt_client, mock_dispatcher, mock_matcher, event_bus, monkeypatch
+    ):
+        """When _critical_complete is cleared, waits until it is set."""
+        monkeypatch.setattr("echo.stt.stt_engine._TTS_WAIT_INITIAL", 0.01)
+        mock_tts = MagicMock()
+        mock_tts._critical_complete = asyncio.Event()
+        mock_tts._critical_complete.clear()  # Critical work in progress
+
+        async def set_event():
+            await asyncio.sleep(0.1)
+            mock_tts._critical_complete.set()
+
+        asyncio.create_task(set_event())
+
+        eng = STTEngine(event_bus, tts_engine=mock_tts)
+        await asyncio.wait_for(eng._wait_for_tts(), timeout=2.0)
+
+    async def test_wait_for_tts_fallback_polls_flag(
+        self, mock_microphone, mock_stt_client, mock_dispatcher, mock_matcher, event_bus, monkeypatch
+    ):
+        """When _critical_complete attr is missing, falls back to polling boolean."""
+        monkeypatch.setattr("echo.stt.stt_engine._TTS_WAIT_INITIAL", 0.01)
+        mock_tts = MagicMock(spec=[])  # No attributes
+        mock_tts._processing_critical = True
+
+        async def clear_flag():
+            await asyncio.sleep(0.1)
+            mock_tts._processing_critical = False
+
+        asyncio.create_task(clear_flag())
+
+        eng = STTEngine(event_bus, tts_engine=mock_tts)
+        await asyncio.wait_for(eng._wait_for_tts(), timeout=2.0)
+
+    async def test_cancel_called_before_task_cancel(
+        self, engine, event_bus, mock_microphone
+    ):
+        """When cancelling listening, microphone.cancel() is called."""
+        capture_started = asyncio.Event()
+
+        async def slow_capture(**kwargs):
+            capture_started.set()
+            await asyncio.sleep(10)
+            return _PCM_BYTES
+
+        mock_microphone.capture_until_silence = AsyncMock(side_effect=slow_capture)
+
+        await engine.start()
+        blocked = _make_event(
+            EventType.AGENT_BLOCKED,
+            session_id=_SESSION,
+            options=["RS256"],
+        )
+        await event_bus.emit(blocked)
+        await asyncio.wait_for(capture_started.wait(), timeout=2.0)
+
+        resolved = _make_event(EventType.TOOL_EXECUTED, session_id=_SESSION)
+        await event_bus.emit(resolved)
+        await asyncio.sleep(0.1)
+
+        mock_microphone.cancel.assert_called()
         await engine.stop()

@@ -312,3 +312,55 @@ async def response_stream(request: Request) -> EventSourceResponse:
             logger.debug("Response SSE subscriber cleaned up")
 
     return EventSourceResponse(_generate())
+
+
+# ---------------------------------------------------------------------------
+# GET /test-tts  (diagnostic)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/test-tts")
+async def test_tts(request: Request) -> dict:
+    """Diagnostic endpoint: synthesize a short phrase and play it.
+
+    Returns details about each step so we can pinpoint TTS failures.
+    """
+    tts_engine = _get_tts_engine(request)
+    result: dict = {
+        "tts_available": tts_engine.tts_available,
+        "audio_available": tts_engine.audio_available,
+    }
+
+    if not tts_engine.tts_available:
+        result["error"] = "ElevenLabs not available"
+        return result
+
+    test_text = "Hello, this is an Echo test."
+    try:
+        pcm = await tts_engine._elevenlabs.synthesize(test_text)
+    except Exception as exc:
+        result["error"] = f"Synthesis exception: {exc}"
+        return result
+
+    if pcm is None:
+        result["error"] = "Synthesis returned None"
+        return result
+
+    result["pcm_bytes"] = len(pcm)
+
+    if len(pcm) == 0:
+        result["error"] = "Synthesis returned empty PCM data"
+        return result
+
+    if tts_engine.audio_available:
+        try:
+            await tts_engine._player.play_immediate(pcm)
+            result["played"] = True
+        except Exception as exc:
+            result["played"] = False
+            result["play_error"] = str(exc)
+    else:
+        result["played"] = False
+        result["play_error"] = "No audio output device"
+
+    return result

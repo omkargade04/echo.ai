@@ -3,6 +3,13 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env from the project root (if present) so that env vars are
+# available even when the user hasn't explicitly exported them.
+_project_env = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_project_env, override=True)
+
 DEFAULT_PORT: int = 7865
 
 CLAUDE_SETTINGS_PATH: Path = Path.home() / ".claude" / "settings.json"
@@ -34,7 +41,7 @@ OLLAMA_HEALTH_CHECK_INTERVAL: float = 60.0  # Re-check Ollama availability every
 
 # --- ElevenLabs TTS configuration ---
 
-ELEVENLABS_API_KEY: str = os.environ.get("ECHO_ELEVENLABS_API_KEY", "")
+ELEVENLABS_API_KEY: str = "sk_83f65270af060576b1ddfd11f554c5d6e88bdac923ffc5bc"
 ELEVENLABS_BASE_URL: str = os.environ.get(
     "ECHO_ELEVENLABS_BASE_URL", "https://api.elevenlabs.io"
 )

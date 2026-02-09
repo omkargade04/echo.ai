@@ -20,6 +20,12 @@ from echo.stt.types import MatchMethod, MatchResult, ResponseEvent, STTState
 
 logger = logging.getLogger(__name__)
 
+# Maximum time to wait for TTS to finish playing before starting capture.
+_TTS_WAIT_TIMEOUT: float = 20.0
+_TTS_WAIT_POLL: float = 0.2
+# Initial delay to let the pipeline propagate (EventBus → Summarizer → NarrationBus → TTS).
+_TTS_WAIT_INITIAL: float = 0.5
+
 
 class STTEngine:
     """Core STT orchestrator — coordinates microphone, transcription, matching, and dispatch."""
@@ -68,6 +74,7 @@ class STTEngine:
 
         # Cancel active listening task
         if self._listen_task and not self._listen_task.done():
+            self._microphone.cancel()
             self._listen_task.cancel()
             try:
                 await self._listen_task
@@ -164,6 +171,7 @@ class STTEngine:
         """Start listening when agent is blocked with options."""
         # Cancel any existing listen task
         if self._listen_task and not self._listen_task.done():
+            self._microphone.cancel()
             self._listen_task.cancel()
             try:
                 await self._listen_task
@@ -177,6 +185,39 @@ class STTEngine:
             )
         )
 
+    async def _wait_for_tts(self) -> None:
+        """Wait for TTSEngine to finish playing the critical narration.
+
+        The STTEngine receives events from EventBus BEFORE the TTSEngine
+        receives the corresponding NarrationEvent (which goes through the
+        Summarizer first).  A short initial delay lets the pipeline
+        propagate the event to TTSEngine so ``_critical_complete`` is
+        cleared before we check it.  Then we await the Event for proper
+        synchronization instead of busy-polling a boolean flag.
+        """
+        if not self._tts_engine:
+            return
+
+        # Give the pipeline time: EventBus → Summarizer → NarrationBus → TTS
+        await asyncio.sleep(_TTS_WAIT_INITIAL)
+
+        critical_complete = getattr(self._tts_engine, "_critical_complete", None)
+        if critical_complete is None:
+            # Fallback: poll the boolean flag
+            elapsed = 0.0
+            while elapsed < _TTS_WAIT_TIMEOUT:
+                if not getattr(self._tts_engine, "_processing_critical", False):
+                    return
+                await asyncio.sleep(_TTS_WAIT_POLL)
+                elapsed += _TTS_WAIT_POLL
+            logger.warning("Timed out waiting for TTS (poll fallback)")
+            return
+
+        try:
+            await asyncio.wait_for(critical_complete.wait(), timeout=_TTS_WAIT_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.warning("Timed out waiting for TTS to finish critical playback")
+
     async def _listen_and_respond(
         self,
         session_id: str,
@@ -185,6 +226,10 @@ class STTEngine:
     ) -> None:
         """Full cycle: capture -> transcribe -> match -> confirm -> dispatch."""
         try:
+            # Wait for TTS to finish playing the alert + narration before
+            # opening the microphone, to avoid sounddevice conflicts.
+            await self._wait_for_tts()
+
             # Step 1: Capture audio
             if not self._microphone.is_available:
                 logger.info("Microphone not available — skipping voice capture")
@@ -292,12 +337,18 @@ class STTEngine:
                 match_result.matched_text,
             )
 
+        # Clear the alert so it stops repeating
+        if self._alert_manager and hasattr(self._alert_manager, "clear_alert"):
+            await self._alert_manager.clear_alert(session_id)
+
     async def _cancel_listening(self, session_id: str) -> None:
         """Cancel active listening for a session."""
         if self._listen_task and not self._listen_task.done():
             logger.info(
                 "Cancelling listening for resolved session %s", session_id
             )
+            # Signal the microphone thread to stop BEFORE cancelling the task.
+            self._microphone.cancel()
             self._listen_task.cancel()
             try:
                 await self._listen_task
@@ -334,7 +385,13 @@ class STTEngine:
                 text,
                 success,
             )
+            # Clear the alert so it stops repeating
+            if success and self._alert_manager and hasattr(self._alert_manager, "clear_alert"):
+                await self._alert_manager.clear_alert(session_id)
             return success
         else:
             logger.warning("Dispatch unavailable for manual response: %s", text)
+            # Still clear alert even if dispatch is unavailable
+            if self._alert_manager and hasattr(self._alert_manager, "clear_alert"):
+                await self._alert_manager.clear_alert(session_id)
             return False

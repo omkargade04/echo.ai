@@ -152,6 +152,21 @@ class _TranscriptFileHandler(FileSystemEventHandler):
         self._seen: dict[str, float] = {}
         self._events_processed: int = 0
 
+    def initialize_offsets(self, watch_path: Path) -> None:
+        """Set offsets for existing JSONL files to their current size.
+
+        This ensures only content written after startup is processed.
+        """
+        for jsonl_file in watch_path.rglob("*.jsonl"):
+            try:
+                file_size = jsonl_file.stat().st_size
+                self._offsets[str(jsonl_file)] = file_size
+                logger.debug(
+                    "Initialized offset for %s to %d", jsonl_file, file_size
+                )
+            except OSError:
+                pass
+
     # -- FileSystemEventHandler overrides ------------------------------------
 
     def on_modified(self, event: FileSystemEvent) -> None:
@@ -375,6 +390,7 @@ class TranscriptWatcher:
             event_bus=self._event_bus,
             loop=loop,
         )
+        self._handler.initialize_offsets(watch_path)
 
         self._observer = Observer()
         self._observer.schedule(

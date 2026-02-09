@@ -101,6 +101,17 @@ def _run_server(port: int) -> None:
 
     from echo.server.app import create_app
 
+    # Ensure echo.* loggers are visible at INFO level in foreground mode.
+    # Without this, only WARNING+ would reach stderr via Python's last-resort handler.
+    echo_logger = logging.getLogger("echo")
+    if not echo_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
+        echo_logger.addHandler(handler)
+    echo_logger.setLevel(logging.INFO)
+
     app = create_app()
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 
