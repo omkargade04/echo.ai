@@ -312,9 +312,9 @@ class STTEngine:
         confirmation_text = f"Sending: {match_result.matched_text}"
 
         # Optional: use TTS engine to confirm
-        if self._tts_engine and hasattr(self._tts_engine, "_elevenlabs"):
+        if self._tts_engine and hasattr(self._tts_engine, "_provider"):
             try:
-                pcm = await self._tts_engine._elevenlabs.synthesize(confirmation_text)
+                pcm = await self._tts_engine._provider.synthesize(confirmation_text)
                 if pcm and hasattr(self._tts_engine, "_player"):
                     await self._tts_engine._player.play_immediate(pcm)
             except Exception:

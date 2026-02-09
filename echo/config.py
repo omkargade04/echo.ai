@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load .env from the project root (if present) so that env vars are
 # available even when the user hasn't explicitly exported them.
 _project_env = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(_project_env, override=True)
+load_dotenv(_project_env, override=False)
 
 DEFAULT_PORT: int = 7865
 
@@ -39,9 +39,14 @@ OLLAMA_TIMEOUT: float = float(os.environ.get("ECHO_LLM_TIMEOUT", "5.0"))
 OLLAMA_HEALTH_CHECK_INTERVAL: float = 60.0  # Re-check Ollama availability every 60s
 
 
+# --- TTS provider selection ---
+
+TTS_PROVIDER: str = os.environ.get("ECHO_TTS_PROVIDER", "elevenlabs")
+
+
 # --- ElevenLabs TTS configuration ---
 
-ELEVENLABS_API_KEY: str = "sk_83f65270af060576b1ddfd11f554c5d6e88bdac923ffc5bc"
+ELEVENLABS_API_KEY: str = os.environ.get("ECHO_ELEVENLABS_API_KEY", "")
 ELEVENLABS_BASE_URL: str = os.environ.get(
     "ECHO_ELEVENLABS_BASE_URL", "https://api.elevenlabs.io"
 )
@@ -50,6 +55,25 @@ TTS_MODEL: str = os.environ.get("ECHO_TTS_MODEL", "eleven_turbo_v2_5")
 TTS_TIMEOUT: float = float(os.environ.get("ECHO_TTS_TIMEOUT", "10.0"))
 TTS_HEALTH_CHECK_INTERVAL: float = float(
     os.environ.get("ECHO_TTS_HEALTH_CHECK_INTERVAL", "60.0")
+)
+
+
+# --- Inworld TTS configuration ---
+
+INWORLD_API_KEY: str = os.environ.get("ECHO_INWORLD_API_KEY", "")
+INWORLD_BASE_URL: str = os.environ.get(
+    "ECHO_INWORLD_BASE_URL", "https://api.inworld.ai"
+)
+INWORLD_VOICE_ID: str = os.environ.get("ECHO_INWORLD_VOICE_ID", "Ashley")
+INWORLD_MODEL: str = os.environ.get(
+    "ECHO_INWORLD_MODEL", "inworld-tts-1.5-max"
+)
+INWORLD_TIMEOUT: float = float(os.environ.get("ECHO_INWORLD_TIMEOUT", "10.0"))
+INWORLD_TEMPERATURE: float = float(
+    os.environ.get("ECHO_INWORLD_TEMPERATURE", "1.1")
+)
+INWORLD_SPEAKING_RATE: float = float(
+    os.environ.get("ECHO_INWORLD_SPEAKING_RATE", "1.0")
 )
 
 

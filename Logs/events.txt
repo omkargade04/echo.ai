@@ -1,0 +1,39 @@
+omkar.gade@omkargade-MacBook-Pro ~ % curl -N localhost:7865/events
+: ping - 2026-02-09 06:49:53.853923+00:00
+
+: ping
+
+: ping - 2026-02-09 06:50:08.866969+00:00
+
+: ping
+
+event: agent_blocked
+data: {"type":"agent_blocked","timestamp":1770619821.062985,"session_id":"d9653a96-899d-42d8-983b-76a278a48b2e","source":"hook","event_id":"d70fb00c-6592-484c-bd14-768ff7a180c6","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which package manager should we use for this project?","header":"Package Mgr","options":[{"label":"npm","description":"Node's default package manager"},{"label":"pnpm","description":"Fast, disk-efficient package manager"},{"label":"yarn","description":"Facebook's alternative package manager"}],"multiSelect":false}]},"tool_output":null,"block_reason":"permission_prompt","message":"Claude is asking: Which package manager should we use for this project? The choices are: npm, pnpm, yarn","options":["npm","pnpm","yarn"],"text":null,"stop_reason":null}
+
+: ping - 2026-02-09 06:50:23.869545+00:00
+
+: ping
+
+: ping - 2026-02-09 06:50:38.871917+00:00
+
+: ping
+
+: ping - 2026-02-09 06:50:53.873566+00:00
+
+event: tool_executed
+data: {"type":"tool_executed","timestamp":1770619858.8408058,"session_id":"d9653a96-899d-42d8-983b-76a278a48b2e","source":"hook","event_id":"360e8a14-d9a5-4369-b00f-9c33dbbae510","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which package manager should we use for this project?","header":"Package Mgr","options":[{"label":"npm","description":"Node's default package manager"},{"label":"pnpm","description":"Fast, disk-efficient package manager"},{"label":"yarn","description":"Facebook's alternative package manager"}],"multiSelect":false}],"answers":{"Which package manager should we use for this project?":"npm"}},"tool_output":{"questions":[{"question":"Which package manager should we use for this project?","header":"Package Mgr","options":[{"label":"npm","description":"Node's default package manager"},{"label":"pnpm","description":"Fast, disk-efficient package manager"},{"label":"yarn","description":"Facebook's alternative package manager"}],"multiSelect":false}],"answers":{"Which package manager should we use for this project?":"npm"}},"block_reason":null,"message":null,"options":null,"text":null,"stop_reason":null}
+
+event: agent_message
+data: {"type":"agent_message","timestamp":1770619864.766,"session_id":"d9653a96-899d-42d8-983b-76a278a48b2e","source":"transcript","event_id":"b27fd712-21e3-4c83-bb7b-25c144252178","tool_name":null,"tool_input":null,"tool_output":null,"block_reason":null,"message":null,"options":null,"text":"Got it — npm. How did the pipeline test go this time? With the logging fix, you should see detailed messages in the server terminal like:\n\n- `Synthesizing critical narration (tts_available=..., text_len=...)`\n- `Synthesis OK — XXXX bytes PCM, playing now`\n- `CRITICAL narration played: ...`\n\nAlso, did you try `curl localhost:7865/test-tts` first? That'll tell us exactly if synthesis + playback works independently.","stop_reason":null}
+
+event: agent_stopped
+data: {"type":"agent_stopped","timestamp":1770619864.90675,"session_id":"d9653a96-899d-42d8-983b-76a278a48b2e","source":"hook","event_id":"3a40b6ca-6daf-4545-9107-bfcebe9c0516","tool_name":null,"tool_input":null,"tool_output":null,"block_reason":null,"message":null,"options":null,"text":null,"stop_reason":null}
+
+: ping - 2026-02-09 06:51:08.875033+00:00
+
+: ping
+
+: ping - 2026-02-09 06:51:23.875002+00:00
+
+curl: (18) transfer closed with outstanding read data remaining
+omkar.gade@omkargade-MacBook-Pro ~ %
